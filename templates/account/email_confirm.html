@@ -1,0 +1,17 @@
+{% extends "account/_base_card.html" %}
+{% load i18n %}
+
+{% block title %}Confirm Email — Collective{% endblock %}
+
+{% block card_body_class %}text-center{% endblock %}
+{% block card_title %}{% trans "Confirm Email Address" %}{% endblock %}
+
+{% block card_content %}
+      <p class="mb-6">
+        {% blocktrans with email=confirmation.email_address.email %}Please confirm that <strong>{{ email }}</strong> is your email address.{% endblocktrans %}
+      </p>
+      <form method="post" action="{% url 'account_confirm_email' confirmation.key %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary w-full">{% trans "Confirm" %}</button>
+      </form>
+{% endblock %}

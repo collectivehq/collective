@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Roles & Permissions — {{ space.title }}{% endblock %}
+{% block content %}
+<div class="max-w-5xl mx-auto">
+  <div class="flex items-center justify-between mb-4">
+    <h1 class="text-xl font-bold">Roles & Permissions</h1>
+    <div class="flex gap-2">
+      <a href="{% url 'spaces:participants' space_id=space.pk %}" class="btn btn-ghost btn-sm">
+        <i data-lucide="users" class="w-4 h-4"></i> Participants
+      </a>
+      <a href="{% url 'spaces:detail' space_id=space.pk %}" class="btn btn-ghost btn-sm">← Back</a>
+    </div>
+  </div>
+
+  {% for item in role_data %}
+  <div class="card bg-base-100 shadow-sm mb-3">
+    <div class="card-body py-3 px-4">
+
+      <form id="role-form-{{ item.role.pk }}"
+            method="post"
+            action="{% url 'spaces:role_update' space_id=space.pk role_id=item.role.pk %}">
+        {% csrf_token %}
+        <div class="flex items-center gap-2 mb-3">
+          <input type="text" name="label" value="{{ item.role.label }}"
+                 class="input input-bordered input-sm flex-1" required>
+          <span class="text-xs text-base-content/60">{{ item.participant_count }} member{{ item.participant_count|pluralize }}</span>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1">
+          {% for field, label, checked in item.permissions %}
+          <label class="flex items-center gap-1.5 cursor-pointer text-sm py-0.5">
+            <input type="checkbox" name="{{ field }}" class="checkbox checkbox-xs checkbox-primary"
+                   {% if checked %}checked{% endif %}>
+            <span>{{ label }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </form>
+
+      <div class="flex items-center justify-between gap-2 mt-3">
+        <div class="flex items-center gap-2">
+          {% if space.default_role_id == item.role.pk %}
+            <span class="badge badge-primary badge-sm">Default</span>
+          {% else %}
+            <form method="post" action="{% url 'spaces:role_set_default' space_id=space.pk role_id=item.role.pk %}">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-ghost btn-xs">Set as default</button>
+            </form>
+          {% endif %}
+        </div>
+        <div class="flex items-center gap-2">
+          {% if not item.participant_count and space.default_role_id != item.role.pk %}
+          <button hx-post="{% url 'spaces:role_delete' space_id=space.pk role_id=item.role.pk %}"
+                  hx-confirm="Delete the &quot;{{ item.role.label }}&quot; role?"
+                  hx-target="closest .card"
+                  hx-swap="outerHTML"
+                  class="btn btn-error btn-xs">Delete</button>
+          {% endif %}
+          <button type="submit"
+                  form="role-form-{{ item.role.pk }}"
+                  class="btn btn-primary btn-xs">Save</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+  {% endfor %}
+
+  <div class="card bg-base-100 border border-dashed border-base-content/30">
+    <div class="card-body py-3 px-4">
+      <form method="post" action="{% url 'spaces:role_create' space_id=space.pk %}" class="flex items-center gap-2">
+        {% csrf_token %}
+        <i data-lucide="plus" class="w-4 h-4 text-base-content/60"></i>
+        <input type="text" name="label" placeholder="New role name…"
+               class="input input-bordered input-sm flex-1" required>
+        <button type="submit" class="btn btn-primary btn-sm">Add Role</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,8 @@
+{% if opinions %}
+<div class="flex {{ bar_height|default:'h-2' }} rounded-full overflow-hidden {{ bar_class }}"
+     title="Agree: {{ opinions.agree|default:0 }} · Abstain: {{ opinions.abstain|default:0 }} · Disagree: {{ opinions.disagree|default:0 }}">
+  {% if opinions.agree %}<div class="bg-success" style="flex: {{ opinions.agree }}"></div>{% endif %}
+  {% if opinions.abstain %}<div class="bg-base-300" style="flex: {{ opinions.abstain }}"></div>{% endif %}
+  {% if opinions.disagree %}<div class="bg-error" style="flex: {{ opinions.disagree }}"></div>{% endif %}
+</div>
+{% endif %}

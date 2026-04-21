@@ -1,0 +1,32 @@
+{% extends "account/_base_card.html" %}
+{% load i18n %}
+
+{% block title %}Sign Up — Collective{% endblock %}
+
+{% block card_title %}{% trans "Sign Up" %}{% endblock %}
+
+{% block card_content %}
+      <p class="text-center text-sm text-base-content/60 mb-4">
+        {% trans "Already have an account?" %}
+        <a href="{% url 'account_login' %}" class="link link-primary">{% trans "Sign in" %}</a>
+      </p>
+      <form method="post" action="{% url 'account_signup' %}">
+        {% csrf_token %}
+        {% for field in form %}
+          {% include "account/_form_field.html" %}
+        {% endfor %}
+        {% if form.non_field_errors %}
+          <div class="alert alert-error mb-3">
+            {% for error in form.non_field_errors %}
+              <span>{{ error }}</span>
+            {% endfor %}
+          </div>
+        {% endif %}
+        {% if redirect_field_value %}
+          <input type="hidden" name="{{ redirect_field_name }}" value="{{ redirect_field_value }}">
+        {% endif %}
+        <div class="form-control mt-4">
+          <button type="submit" class="btn btn-primary w-full">{% trans "Sign Up" %}</button>
+        </div>
+      </form>
+{% endblock %}

@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="flex justify-center">
+  <div class="card bg-base-100 shadow-xl w-full max-w-md">
+    <div class="card-body {% block card_body_class %}{% endblock %}">
+      <h2 class="card-title text-2xl font-bold justify-center mb-4">{% block card_title %}{% endblock %}</h2>
+      {% block card_content %}{% endblock %}
+    </div>
+  </div>
+</div>
+{% endblock %}

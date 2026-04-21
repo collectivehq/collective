@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Join {{ space.title }}{% endblock %}
+{% block content %}
+<div class="max-w-sm mx-auto mt-10">
+  <div class="card bg-base-200">
+    <div class="card-body text-center">
+      <h2 class="card-title justify-center text-lg">Join "{{ space.title }}"</h2>
+      <p class="text-sm text-base-content/60 mt-1">
+        You've been invited to join as <span class="badge badge-outline badge-sm">{{ invite.role.label }}</span>.
+      </p>
+      <form method="post" class="mt-4">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary btn-sm w-full">Accept & Join</button>
+      </form>
+      <a href="{% url 'spaces:list' %}" class="btn btn-ghost btn-sm mt-2">Cancel</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

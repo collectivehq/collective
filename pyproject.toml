@@ -1,0 +1,72 @@
+[project]
+name = "collective"
+version = "0.1.0"
+description = "A structured collective dialogue platform"
+requires-python = ">=3.11"
+dependencies = [
+    "Django>=6.0,<7.0",
+    "psycopg[binary]>=3.3",
+    "django-allauth>=65.16",
+    "django-guardian>=3.3",
+    "django-treebeard>=5.0",
+    "whitenoise>=6.12",
+    "python-dotenv>=1.2",
+    "django-tinymce>=5.0",
+    "nh3>=0.3",
+    "filetype>=1.2",
+]
+
+[tool.setuptools.packages.find]
+include = ["collective*", "apps*"]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.15",
+    "mypy>=1.20",
+    "django-stubs>=6.0",
+    "pytest>=9.0",
+    "pytest-django>=4.12",
+    "factory-boy>=3.3",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+src = ["collective"]
+extend-exclude = ["*/migrations/*"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "A", "DJ"]
+
+[tool.mypy]
+python_version = "3.11"
+plugins = ["mypy_django_plugin.main"]
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "manage"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "treebeard.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["apps.*.tests.*", "conftest"]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "apps.*.migrations.*"
+ignore_errors = true
+
+[tool.django-stubs]
+django_settings_module = "collective.settings"
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "collective.settings"
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]

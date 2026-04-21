@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Create Space — Collective{% endblock %}
+{% block content %}
+<div class="max-w-5xl mx-auto">
+  <div class="flex items-center justify-between mb-4">
+  <h1 class="text-2xl font-bold">Create Space</h1>
+  <a href="{% url 'spaces:list' %}" class="btn btn-ghost btn-sm">← Back to spaces</a>
+</div>
+  <p class="text-sm text-base-content/60 mb-6">Create a new space. You can configure advanced settings after creation.</p>
+  <form method="post" class="space-y-4">
+    {% csrf_token %}
+    <div class="form-control">
+      <label class="label" for="id_title"><span class="label-text">Title</span></label>
+      <input type="text" name="title" id="id_title" class="input input-bordered w-full" value="{{ form.title.value|default:'' }}" required>
+      {% if form.title.errors %}<p class="text-error text-sm mt-1">{{ form.title.errors.0 }}</p>{% endif %}
+    </div>
+    <div class="form-control">
+      <label class="label" for="id_description"><span class="label-text">Description</span></label>
+      <textarea name="description" id="id_description" class="textarea textarea-bordered w-full" rows="4" placeholder="Optional description of the space">{{ form.description.value|default:'' }}</textarea>
+    </div>
+    <button type="submit" class="btn btn-primary w-full">Create Space</button>
+  </form>
+</div>
+{% endblock %}

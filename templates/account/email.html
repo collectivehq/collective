@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Email Addresses — Collective{% endblock %}
+
+{% block content %}
+<div class="max-w-lg mx-auto">
+  <h1 class="text-2xl font-bold mb-6">Email Addresses</h1>
+
+  {% if emailaddresses %}
+    <ul class="space-y-2 mb-6">
+      {% for emailaddress in emailaddresses %}
+        <li class="flex items-center gap-2">
+          <span class="font-mono">{{ emailaddress.email }}</span>
+          {% if emailaddress.primary %}<span class="badge badge-primary badge-sm">Primary</span>{% endif %}
+          {% if emailaddress.verified %}<span class="badge badge-success badge-sm">Verified</span>{% else %}<span class="badge badge-warning badge-sm">Unverified</span>{% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
+  {% if can_add_email %}
+  <h2 class="text-lg font-semibold mb-4">Add Email</h2>
+  <form method="post" action="{% url 'account_email' %}" class="flex gap-2 mb-4">
+    {% csrf_token %}
+    <input type="email" name="email" class="input input-bordered flex-1" placeholder="New email address" required />
+    <button type="submit" name="action_add" class="btn btn-primary btn-sm">Add</button>
+  </form>
+  {% endif %}
+
+  <div class="mt-4">
+    <a href="{% url 'users:profile' %}" class="btn btn-ghost btn-sm">← Back to profile</a>
+  </div>
+</div>
+{% endblock %}

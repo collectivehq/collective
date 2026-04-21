@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Join {{ space.title }} — Collective{% endblock %}
+{% block content %}
+<div class="max-w-lg mx-auto text-center">
+  <h1 class="text-2xl font-bold mb-4">Join "{{ space.title }}"</h1>
+  <p class="mb-6 text-base-content/70">{{ space.description }}</p>
+  <form method="post">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-primary">Join Space</button>
+  </form>
+  <a href="{% url 'spaces:list' %}" class="btn btn-ghost btn-sm mt-4">← Back to spaces</a>
+</div>
+{% endblock %}

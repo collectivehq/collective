@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Spaces — Collective{% endblock %}
+{% block content %}
+<div class="flex justify-between items-center mb-6">
+  <h1 class="text-2xl font-bold">Spaces</h1>
+  {% if user.is_authenticated %}
+    <a href="{% url 'spaces:create' %}" class="btn btn-primary btn-sm">Create Space</a>
+  {% endif %}
+</div>
+
+{% if participating %}
+<h2 class="text-lg font-semibold mb-3">Your Spaces</h2>
+<div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mb-8">
+  {% for space in participating %}
+    {% url 'spaces:detail' space_id=space.pk as card_url %}
+    {% include "spaces/_space_card.html" with card_url=card_url show_lifecycle=True %}
+  {% endfor %}
+</div>
+{% else %}
+  {% if user.is_authenticated %}
+  <div class="text-center py-8 mb-8">
+    <p class="text-base-content/50">You haven't joined any spaces yet — browse open spaces below.</p>
+  </div>
+  {% endif %}
+{% endif %}
+
+{% if open_spaces %}
+<h2 class="text-lg font-semibold mb-3">Open Spaces</h2>
+<div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+  {% for space in open_spaces %}
+    {% url 'spaces:join' space_id=space.pk as card_url %}
+    {% include "spaces/_space_card.html" with card_url=card_url show_lifecycle=False %}
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if not participating and not open_spaces %}
+<div class="text-center py-12 text-base-content/50">
+  <p>No spaces available yet.</p>
+</div>
+{% endif %}
+{% endblock %}

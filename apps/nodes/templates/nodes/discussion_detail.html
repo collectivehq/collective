@@ -1,0 +1,232 @@
+{% load nodes_tags %}{% load opinions_tags %}
+<div x-data="{ reorderingChildren: false }">
+  <div class="flex items-center justify-between mb-4" x-data="{ editingTitle: false }">
+    <div class="flex-1 mr-2">
+      <div x-show="!editingTitle">
+        <h2 class="text-xl font-bold">{{ discussion.label|default:"Untitled" }}</h2>
+      </div>
+      {% if can_shape %}
+      <form x-show="editingTitle" x-cloak
+            hx-post="{% url 'nodes:discussion_edit' space_id=space.pk discussion_id=discussion.pk %}"
+            hx-target="#conversation-panel"
+            hx-swap="innerHTML"
+            class="flex items-center gap-1">
+        {% csrf_token %}
+        <input type="text" name="label" value="{{ discussion.label }}" class="input input-bordered input-sm flex-1" required
+               x-ref="titleInput" x-init="$watch('editingTitle', v => { if (v) $nextTick(() => $refs.titleInput.focus()) })"
+               @keydown.escape="editingTitle = false">
+        <button type="submit" class="btn btn-primary btn-xs btn-square flex items-center justify-center tooltip" data-tip="Save">
+          <i data-lucide="check" class="w-3.5 h-3.5"></i>
+        </button>
+        <button type="button" @click="editingTitle = false" class="btn btn-ghost btn-xs btn-square flex items-center justify-center tooltip" data-tip="Cancel">
+          <i data-lucide="x" class="w-3.5 h-3.5"></i>
+        </button>
+      </form>
+      {% endif %}
+    </div>
+    <div class="flex items-center gap-2">
+      {% if resolution %}
+        <span class="badge {% if resolution == 'accept' %}badge-success{% elif resolution == 'reject' %}badge-error{% else %}badge-warning{% endif %}">
+          {{ resolution|resolution_label }}
+        </span>
+        {% if can_resolve %}
+        <form hx-post="{% url 'nodes:discussion_reopen' space_id=space.pk discussion_id=discussion.pk %}"
+              hx-target="#conversation-panel"
+              hx-swap="innerHTML"
+              class="inline">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-ghost btn-xs gap-1" hx-confirm="Reopen this discussion?">
+            <i data-lucide="rotate-ccw" class="w-3 h-3"></i> Reopen
+          </button>
+        </form>
+        {% endif %}
+      {% else %}
+        {% if participant.role.can_opine and space.opinion_types and space.is_active %}
+        <div id="opinion-actions" hx-target="#opinion-actions" hx-swap="outerHTML" class="flex items-center gap-1">
+          {% for otype in space.opinion_types %}
+            <button hx-post="{% url 'opinions:toggle_opinion' space_id=space.pk node_id=discussion.pk %}"
+                    hx-vals='{"type": "{{ otype }}"}'
+                    class="btn btn-xs {% if otype == 'agree' %}btn-success{% elif otype == 'disagree' %}btn-error{% else %}btn-ghost{% endif %} {% if user_opinion != otype %}btn-outline{% endif %}">
+              {{ otype|title }}
+              {% if opinions %}<span class="badge badge-xs">{{ opinions|dict_get:otype|default:"0" }}</span>{% endif %}
+            </button>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% if can_resolve %}
+        <div class="dropdown dropdown-end">
+          <label tabindex="0" class="btn btn-ghost btn-xs gap-1">
+            <i data-lucide="check-circle" class="w-3.5 h-3.5"></i> Resolve
+          </label>
+          <ul tabindex="0" class="dropdown-content z-10 menu menu-sm p-1 shadow-lg bg-base-100 rounded-box w-36">
+            <li>
+              <button hx-post="{% url 'nodes:discussion_resolve' space_id=space.pk discussion_id=discussion.pk %}"
+                      hx-vals='{"resolution": "accept"}' hx-target="#conversation-panel" hx-swap="innerHTML"
+                      hx-confirm="Accept this discussion?"
+                      class="text-success"><i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Accept</button>
+            </li>
+            <li>
+              <button hx-post="{% url 'nodes:discussion_resolve' space_id=space.pk discussion_id=discussion.pk %}"
+                      hx-vals='{"resolution": "reject"}' hx-target="#conversation-panel" hx-swap="innerHTML"
+                      hx-confirm="Reject this discussion?"
+                      class="text-error"><i data-lucide="x-circle" class="w-3.5 h-3.5"></i> Reject</button>
+            </li>
+            <li>
+              <button hx-post="{% url 'nodes:discussion_resolve' space_id=space.pk discussion_id=discussion.pk %}"
+                      hx-vals='{"resolution": "close"}' hx-target="#conversation-panel" hx-swap="innerHTML"
+                      hx-confirm="Close this discussion?"
+                      class="text-warning"><i data-lucide="minus-circle" class="w-3.5 h-3.5"></i> Close</button>
+            </li>
+          </ul>
+        </div>
+        {% endif %}
+      {% endif %}
+      {% if can_shape or participant %}
+      <div class="dropdown dropdown-end">
+        <label tabindex="0" class="btn btn-ghost btn-xs btn-square">
+          <i data-lucide="ellipsis-vertical" class="w-4 h-4"></i>
+        </label>
+        <ul tabindex="0" class="dropdown-content z-10 menu menu-sm p-1 shadow-lg bg-base-100 rounded-box w-48">
+          {% if can_shape %}
+          <li>
+            <button @click="editingTitle = !editingTitle; document.activeElement.blur()" x-show="!editingTitle">
+              <i data-lucide="pencil" class="w-3.5 h-3.5"></i> Edit title
+            </button>
+          </li>
+          {% if not discussion.is_root %}
+          <li>
+            <button hx-post="{% url 'nodes:discussion_delete' space_id=space.pk discussion_id=discussion.pk %}"
+                    hx-target="#tree-panel" hx-swap="innerHTML"
+                    hx-confirm="Delete &quot;{{ discussion.label }}&quot; and all its children?"
+                    class="text-error">
+              <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Delete
+            </button>
+          </li>
+          {% endif %}
+          {% endif %}
+          {% if participant %}
+          <li>
+            {% include "subscriptions/subscription_button.html" with space=space node=discussion subscribed=is_subscribed dropdown=True %}
+          </li>
+          {% endif %}
+        </ul>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div id="opinion-bar-{{ discussion.pk }}">
+    {% if opinions %}
+    {% include "opinions/_opinion_bar.html" with opinions=opinions bar_class="mb-4" %}
+    {% endif %}
+  </div>
+
+  <!-- Children (posts, links, sub-discussions inline) -->
+  <div class="mb-6">
+    {% if inline_children %}
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="text-sm font-semibold text-base-content/60">Discussion</h3>
+        {% if can_reorganise %}
+        <button @click="reorderingChildren = !reorderingChildren"
+                :class="reorderingChildren ? 'btn-active' : ''"
+                class="btn btn-ghost btn-xs tooltip" data-tip="Reorder children">
+          <i data-lucide="arrow-up-down" class="w-3.5 h-3.5"></i>
+        </button>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    <div id="children-list"
+         data-reorder-url="{% url 'nodes:discussion_children_reorder' space_id=space.pk discussion_id=discussion.pk %}">
+      {% for child in inline_children %}
+        <div class="child-item" data-child-id="{{ child.pk }}">
+          <div class="flex items-start gap-1">
+            <span class="child-drag-handle cursor-grab text-base-content/30 hover:text-base-content/60 mt-3 flex-shrink-0"
+                  x-show="reorderingChildren" x-cloak>
+              <i data-lucide="grip-vertical" class="w-3.5 h-3.5"></i>
+            </span>
+            <div class="flex-1">
+              {% if child.is_post %}
+                {% include "nodes/post_card.html" with post=child %}
+              {% elif child.is_link %}
+                {% include "nodes/link_card.html" with link=child %}
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+
+    <!-- Post form -->
+    {% if can_post %}
+    <div class="mt-4" x-data="{ reopensDiscussion: false }">
+      {% if resolution %}
+      <div class="alert alert-warning mb-2 text-sm">
+        <i data-lucide="alert-triangle" class="w-4 h-4"></i>
+        <span>This discussion is resolved. Posting will reopen it and notify the host.</span>
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" x-model="reopensDiscussion" class="checkbox checkbox-sm checkbox-warning">
+          <span class="font-medium">I want to reopen</span>
+        </label>
+      </div>
+      {% endif %}
+      <form hx-post="{% url 'nodes:post_create' space_id=space.pk discussion_id=discussion.pk %}"
+            hx-target="#conversation-panel"
+            hx-swap="innerHTML"
+            class="space-y-2"
+            {% if resolution %}x-show="reopensDiscussion" x-cloak{% endif %}>
+        {% csrf_token %}
+        {% if resolution %}
+        <input type="hidden" name="reopens_discussion" value="true">
+        {% endif %}
+        <textarea name="content" class="tinymce-editor" data-upload-url="{% url 'nodes:image_upload' space_id=space.pk %}" placeholder="Write a post…"></textarea>
+        <div class="flex gap-2">
+          {% if resolution %}
+          <button type="submit" class="btn btn-primary btn-sm">Post & Reopen</button>
+          {% else %}
+          <button type="submit" class="btn btn-primary btn-sm">Post</button>
+          {% endif %}
+        </div>
+      </form>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Sub-discussions -->
+  {% if sub_discussions %}
+  <div class="mb-4">
+    <h3 class="text-sm font-semibold text-base-content/60 mb-2">Sub-discussions</h3>
+    {% for sub in sub_discussions %}
+    <a href="{% url 'nodes:discussion_detail' space_id=space.pk discussion_id=sub.pk %}"
+       hx-get="{% url 'nodes:discussion_detail' space_id=space.pk discussion_id=sub.pk %}"
+       hx-target="#conversation-panel"
+       hx-swap="innerHTML"
+       @click="window.selectTreeNode && window.selectTreeNode('{{ sub.pk }}')"
+       class="card bg-base-100 shadow-sm mb-2 hover:shadow-md transition-shadow cursor-pointer block">
+      <div class="card-body py-2 px-4">
+        <div class="flex items-center justify-between">
+          <span class="font-medium text-sm">{{ sub.label|default:"Untitled" }}</span>
+          <span class="flex items-center gap-1">
+            {% resolution_icon sub.resolution_type %}
+            <span class="text-xs text-base-content/50">{{ sub.child_count }} children</span>
+          </span>
+        </div>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% if can_shape and space.is_active %}
+  <div class="mb-4">
+    {% include "nodes/_add_discussion_form.html" with parent_id=discussion.pk %}
+  </div>
+  {% endif %}
+</div>
+<script>
+  (function() {
+    var nodeId = '{{ discussion.pk }}';
+    if (window.selectTreeNode) {
+      window.selectTreeNode(nodeId);
+    }
+  })();
+</script>

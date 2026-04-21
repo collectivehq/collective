@@ -1,0 +1,129 @@
+{% load nodes_tags %}
+<div class="card bg-base-100 shadow-sm mb-2">
+  <div class="card-body py-3 px-4">
+
+    <div class="flex items-center justify-between text-xs text-base-content/60 mb-1">
+      <div class="flex items-center gap-1.5">
+        {% if link.target and not link.target.deleted_at %}
+          {% if link.link_preview_post %}
+            <span class="font-medium">{{ link.link_preview_post.author.name|default:link.link_preview_post.author.email }}</span>
+            {% with author_role=role_map|get_role:link.link_preview_post.author_id %}
+              {% if author_role %}<span class="badge badge-ghost badge-xs">{{ author_role }}</span>{% endif %}
+            {% endwith %}
+          {% endif %}
+        {% else %}
+          <div class="flex items-center gap-2 italic text-base-content/40">
+            <i data-lucide="link-2-off" class="w-3.5 h-3.5"></i>
+            <span>Linked discussion has been deleted.</span>
+          </div>
+        {% endif %}
+      </div>
+      <div class="flex items-center gap-2">
+        {% if link.target and not link.target.deleted_at and link.link_preview_post %}
+          <span>{{ link.link_preview_post.created_at|timesince }} ago</span>
+        {% endif %}
+        {% if space.is_active %}
+        {% if can_moderate or can_reorganise and all_discussions %}
+        <div class="dropdown dropdown-end">
+          <label tabindex="0" class="btn btn-ghost btn-xs btn-square">
+            <i data-lucide="ellipsis-vertical" class="w-3.5 h-3.5"></i>
+          </label>
+          <ul tabindex="0" class="dropdown-content z-10 menu menu-sm p-1 shadow-lg bg-base-100 rounded-box w-40">
+            {% if can_moderate %}
+            <li>
+              <button hx-post="{% url 'nodes:link_delete' space_id=space.pk link_id=link.pk %}"
+                      hx-target="#conversation-panel" hx-swap="innerHTML"
+                      hx-confirm="Delete this link?" class="text-error">
+                <i data-lucide="trash-2" class="w-3 h-3"></i> Delete
+              </button>
+            </li>
+            {% endif %}
+            {% if can_reorganise and all_discussions %}
+            <li>
+              <button @click="document.getElementById('moveDialog-{{ link.pk }}').showModal(); $el.closest('.dropdown').querySelector('[tabindex]').blur()">
+                <i data-lucide="move" class="w-3 h-3"></i> Move
+              </button>
+            </li>
+            {% endif %}
+          </ul>
+        </div>
+        {% endif %}
+        {% endif %}
+      </div>
+    </div>
+
+    {% if link.target and not link.target.deleted_at %}
+      {% if link.link_preview_post %}
+      <div class="prose prose-sm max-w-none line-clamp-3">
+        {{ link.link_preview_post.content|sanitize_html }}
+      </div>
+      {% endif %}
+      <div class="flex items-center justify-between mt-2">
+        <span class="badge badge-info badge-sm gap-1">
+          <i data-lucide="git-branch" class="w-3 h-3"></i> Promoted to Discussion
+        </span>
+        <a href="{% url 'nodes:discussion_detail' space_id=space.pk discussion_id=link.target_id %}"
+           hx-get="{% url 'nodes:discussion_detail' space_id=space.pk discussion_id=link.target_id %}"
+           hx-target="#conversation-panel"
+           hx-swap="innerHTML"
+           @click="window.selectTreeNode && window.selectTreeNode('{{ link.target_id }}')"
+           class="btn btn-ghost btn-xs gap-1">
+          <i data-lucide="external-link" class="w-3.5 h-3.5"></i> Open Discussion
+        </a>
+      </div>
+    {% endif %}
+
+  </div>
+
+  {% if can_reorganise and all_discussions %}
+  <dialog id="moveDialog-{{ link.pk }}" class="modal"
+          x-data="{ step: 1, selectedDiscussion: '' }"
+          @close="step = 1; selectedDiscussion = ''"
+          x-ref="moveDialog">
+    <div class="modal-box max-w-md" @click.stop>
+      <form hx-post="{% url 'nodes:post_move' space_id=space.pk post_id=link.pk %}"
+            hx-target="#conversation-panel"
+            hx-swap="innerHTML"
+            @htmx:afterRequest="$refs.moveDialog.close()">
+        {% csrf_token %}
+        <div x-show="step === 1">
+          <h3 class="font-bold text-sm mb-2">Move link to…</h3>
+          <ul class="menu menu-xs bg-base-200 rounded-lg max-h-60 overflow-y-auto flex-nowrap">
+            {% for d in all_discussions %}
+              <li>
+                <label class="flex items-center gap-1.5 cursor-pointer"
+                       style="padding-left: {{ d.level }}rem">
+                  <input type="radio" name="target_discussion_id" value="{{ d.pk }}"
+                         class="radio radio-xs radio-primary" required
+                         @change="selectedDiscussion = '{{ d.pk }}'">
+                  <span class="truncate">{{ d.label|default:"Untitled" }}</span>
+                </label>
+              </li>
+            {% endfor %}
+          </ul>
+          <div class="modal-action">
+            <button type="button" class="btn btn-primary btn-sm"
+                    :disabled="!selectedDiscussion"
+                    @click="step = 2; htmx.ajax('GET', '{% url 'nodes:post_move_positions' space_id=space.pk post_id=link.pk %}' + '?discussion_id=' + selectedDiscussion, {target: '#move-positions-{{ link.pk }}', swap: 'innerHTML'})">
+              Next
+            </button>
+            <button type="button" class="btn btn-ghost btn-sm" @click="$refs.moveDialog.close()">Cancel</button>
+          </div>
+        </div>
+        <div x-show="step === 2" x-cloak>
+          <h3 class="font-bold text-sm mb-2">Select position</h3>
+          <div id="move-positions-{{ link.pk }}">
+            <span class="loading loading-spinner loading-xs"></span>
+          </div>
+          <div class="modal-action">
+            <button type="button" class="btn btn-ghost btn-sm" @click="step = 1">Back</button>
+            <button type="submit" class="btn btn-primary btn-sm">Move</button>
+            <button type="button" class="btn btn-ghost btn-sm" @click="$refs.moveDialog.close()">Cancel</button>
+          </div>
+        </div>
+      </form>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  </dialog>
+  {% endif %}
+</div>

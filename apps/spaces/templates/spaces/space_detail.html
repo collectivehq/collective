@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block title %}{{ space.title }} — Collective{% endblock %}
+{% block content %}
+<div class="flex flex-col lg:flex-row gap-4">
+  <!-- Sidebar -->
+  <div class="lg:w-80 lg:flex-shrink-0 relative z-10">
+    <div class="lg:sticky lg:top-20" x-data="{ editingTree: false }">
+      <!-- Mobile toggle -->
+      <details class="lg:hidden collapse collapse-arrow bg-base-100 shadow-sm mb-4">
+        <summary class="collapse-title text-sm font-medium py-2 min-h-0">
+          <i data-lucide="panel-left" class="w-4 h-4 inline"></i> Tree
+        </summary>
+        <div class="collapse-content">
+          <div id="tree-panel-mobile"></div>
+        </div>
+      </details>
+      <aside class="hidden lg:block bg-base-200 rounded-lg p-4 relative">
+        <div class="flex justify-between items-center mb-3">
+          <h2 class="font-bold text-lg">
+            {% if root_discussion %}
+            <a href="{% url 'nodes:discussion_detail' space_id=space.pk discussion_id=root_discussion.pk %}"
+               hx-get="{% url 'nodes:discussion_detail' space_id=space.pk discussion_id=root_discussion.pk %}"
+               hx-target="#conversation-panel"
+               hx-swap="innerHTML"
+               class="hover:text-primary">{{ space.title }}</a>
+            {% else %}
+            {{ space.title }}
+            {% endif %}
+          </h2>
+          <div class="flex items-center gap-1">
+            <button @click="document.getElementById('aboutSpaceModal').showModal()"
+                    class="btn btn-ghost btn-xs btn-square flex items-center justify-center tooltip tooltip-bottom"
+                    data-tip="About this space">
+              <i data-lucide="info" class="w-3.5 h-3.5"></i>
+            </button>
+            {% if participant.role.can_shape_tree %}
+              <button @click="editingTree = !editingTree" class="btn btn-ghost btn-xs btn-square flex items-center justify-center tooltip tooltip-bottom"
+                      :class="editingTree ? 'btn-active' : ''" data-tip="Rearrange tree">
+                <i data-lucide="move" class="w-3.5 h-3.5"></i>
+              </button>
+            {% endif %}
+          </div>
+        </div>
+        <div id="tree-panel"
+             hx-get="{% url 'nodes:discussion_tree' space_id=space.pk %}"
+             hx-trigger="load, refreshTree from:body"
+             hx-target="#tree-panel"
+             hx-swap="innerHTML"
+             data-reorder-url="{% url 'nodes:tree_reorder' space_id=space.pk %}"
+             data-move-url-template="{% url 'nodes:discussion_move' space_id=space.pk discussion_id='00000000-0000-0000-0000-000000000000' %}">
+          <span class="loading loading-spinner loading-sm"></span>
+        </div>
+        {% if participant.role.can_set_permissions or participant.role.can_moderate %}
+        <div class="divider my-3"></div>
+        <h3 class="text-sm font-semibold mb-2">Admin</h3>
+        <div class="flex flex-col gap-1">
+          <a href="{% url 'spaces:participants' space_id=space.pk %}" class="btn btn-ghost btn-sm justify-start gap-2 text-xs">
+            <i data-lucide="users" class="w-4 h-4"></i> Participants
+          </a>
+          {% if participant.role.can_set_permissions %}
+          <a href="{% url 'spaces:permissions' space_id=space.pk %}" class="btn btn-ghost btn-sm justify-start gap-2 text-xs">
+            <i data-lucide="shield" class="w-4 h-4"></i> Roles & Permissions
+          </a>
+          <a href="{% url 'spaces:settings' space_id=space.pk %}" class="btn btn-ghost btn-sm justify-start gap-2 text-xs">
+            <i data-lucide="settings" class="w-4 h-4"></i> Settings
+          </a>
+          {% endif %}
+        </div>
+        {% endif %}
+      </aside>
+    </div>
+  </div>
+  <!-- Main content -->
+  <div class="flex-1 min-w-0 relative z-0">
+    <div id="conversation-panel">
+      {% if root_discussion %}
+        <div id="initial-node-loader"
+             hx-get="{% url 'nodes:discussion_detail' space_id=space.pk discussion_id=root_discussion.pk %}"
+             hx-trigger="load"
+             hx-target="#conversation-panel"
+             hx-swap="innerHTML">
+          <span class="loading loading-spinner loading-sm"></span>
+        </div>
+        <script nonce="{{ csp_nonce }}">
+          (function() {
+            var hash = window.location.hash.substring(1);
+            if (hash) {
+              var loader = document.getElementById('initial-node-loader');
+              if (loader) {
+                var url = '{% url "nodes:discussion_detail" space_id=space.pk discussion_id="00000000-0000-0000-0000-000000000000" %}'.replace('00000000-0000-0000-0000-000000000000', hash);
+                loader.setAttribute('hx-get', url);
+              }
+              window.__treeState = window.__treeState || { expanded: [], selectedNode: null, editingTree: false };
+              window.__treeState.selectedNode = hash;
+            }
+          })();
+        </script>
+      {% else %}
+        <div class="text-center py-12">
+          <i data-lucide="message-circle" class="w-12 h-12 mx-auto text-base-content/20 mb-4"></i>
+          <p class="text-base-content/50 text-lg">This space has no content yet.</p>
+          {% if participant.role.can_shape_tree %}
+            <p class="text-base-content/60 text-sm mt-1">Create the first discussion to start.</p>
+          {% endif %}
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+{% load spaces_tags %}
+<dialog id="aboutSpaceModal" class="modal">
+  <div class="modal-box">
+    <form method="dialog">
+      <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+    </form>
+    <h3 class="text-lg font-bold mb-4">{{ space.title }}</h3>
+    <div class="space-y-3 text-sm">
+      <div class="flex flex-wrap items-center gap-2 text-xs">
+        {% lifecycle_badge space %}
+      </div>
+      {% if space.description %}
+      <div class="text-base-content/70 prose prose-sm max-w-none">{{ space.description }}</div>
+      {% endif %}
+      <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-base-content/50">
+        <span class="flex items-center gap-1">
+          <i data-lucide="users" class="w-3 h-3"></i> {{ participant_count }} participant{{ participant_count|pluralize }}
+        </span>
+        {% if space.starts_at %}
+        <span class="flex items-center gap-1">
+          <i data-lucide="calendar" class="w-3 h-3"></i> {{ space.starts_at|date:"M j, Y" }}
+        </span>
+        {% endif %}
+        {% if space.ends_at %}
+        <span class="flex items-center gap-1">
+          <i data-lucide="calendar-clock" class="w-3 h-3"></i> {{ space.ends_at|date:"M j, Y" }}
+        </span>
+        {% endif %}
+        <span class="flex items-center gap-1">
+          <i data-lucide="clock" class="w-3 h-3"></i> Created {{ space.created_at|timesince }} ago
+        </span>
+      </div>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+{% endblock %}

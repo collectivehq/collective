@@ -1,0 +1,16 @@
+{% extends "account/_base_card.html" %}
+{% load i18n %}
+
+{% block title %}Verify Email — Collective{% endblock %}
+
+{% block card_body_class %}text-center{% endblock %}
+{% block card_title %}{% trans "Verify Your Email" %}{% endblock %}
+
+{% block card_content %}
+      <p class="text-base-content/60">
+        {% trans "We've sent a verification email to your address. Please check your inbox and click the link to complete your registration." %}
+      </p>
+      <div class="mt-6">
+        <a href="{% url 'account_login' %}" class="btn btn-primary">{% trans "Back to Sign In" %}</a>
+      </div>
+{% endblock %}

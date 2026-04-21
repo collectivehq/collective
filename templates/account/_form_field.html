@@ -1,0 +1,38 @@
+{% if field.field.widget.input_type == "checkbox" %}
+<div class="form-control w-full mb-3">
+  <label class="label cursor-pointer justify-start gap-2">
+    <input type="checkbox"
+           name="{{ field.html_name }}"
+           id="{{ field.id_for_label }}"
+           {% if field.value %}checked{% endif %}
+           class="checkbox checkbox-sm">
+    <span class="label-text">{{ field.label }}</span>
+  </label>
+  {% if field.help_text %}
+    <label class="label"><span class="label-text-alt text-base-content/50">{{ field.help_text }}</span></label>
+  {% endif %}
+  {% for error in field.errors %}
+    <label class="label"><span class="label-text-alt text-error">{{ error }}</span></label>
+  {% endfor %}
+</div>
+{% else %}
+<div class="form-control w-full mb-3">
+  <label class="label" for="{{ field.id_for_label }}">
+    <span class="label-text">{{ field.label }}</span>
+  </label>
+  <input type="{{ field.field.widget.input_type }}"
+         name="{{ field.html_name }}"
+         id="{{ field.id_for_label }}"
+         value="{{ field.value|default:'' }}"
+         class="input input-bordered w-full {% if field.errors %}input-error{% endif %}"
+         {% if field.field.required %}required{% endif %}
+         {% if field.field.widget.attrs.placeholder %}placeholder="{{ field.field.widget.attrs.placeholder }}"{% endif %}
+         {% if field.field.widget.attrs.autocomplete %}autocomplete="{{ field.field.widget.attrs.autocomplete }}"{% endif %}>
+  {% if field.help_text %}
+    <label class="label"><span class="label-text-alt text-base-content/50">{{ field.help_text }}</span></label>
+  {% endif %}
+  {% for error in field.errors %}
+    <label class="label"><span class="label-text-alt text-error">{{ error }}</span></label>
+  {% endfor %}
+</div>
+{% endif %}

@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+{% load static %}
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Collective{% endblock %}</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4/dist/full.min.css" rel="stylesheet" type="text/css" />
+  <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+  <script src="https://unpkg.com/htmx.org@2.0/dist/htmx.min.js"></script>
+  <script src="https://unpkg.com/alpinejs@3/dist/cdn.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1/Sortable.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="stylesheet" type="text/css" href="{% static 'tinymce/skins/ui/oxide/skin.min.css' %}">
+  <script src="{% static 'tinymce/tinymce.min.js' %}"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1/themes/prism.min.css">
+  <style>
+    [x-cloak] { display: none !important; }
+    #htmx-progress { position: fixed; top: 0; left: 0; height: 3px; background: oklch(var(--p)); z-index: 9999; transition: width 0.3s ease; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/dayjs@1/plugin/relativeTime.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16/dist/contrib/auto-render.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1/plugins/autoloader/prism-autoloader.min.js"></script>
+  <script nonce="{{ csp_nonce }}">dayjs.extend(dayjs_plugin_relativeTime);</script>
+  {% block extra_head %}{% endblock %}
+</head>
+<body class="min-h-screen bg-base-200" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+  <div id="htmx-progress" style="width: 0%; display: none;"></div>
+  <div class="navbar bg-base-100 shadow-sm">
+    <div class="flex-1">
+      <a href="{% url 'spaces:list' %}" class="btn btn-ghost text-xl">Collective</a>
+    </div>
+    <div class="flex-none gap-2">
+      {% if user.is_authenticated %}
+        <div class="dropdown dropdown-end">
+          <div tabindex="0" role="button" class="btn btn-ghost btn-sm gap-2">
+            <div class="avatar placeholder">
+              <div class="bg-neutral text-neutral-content w-8 rounded-full">
+                <span class="text-sm">{{ user.name|default:user.email|make_list|first|upper }}</span>
+              </div>
+            </div>
+            <span class="hidden sm:inline">{{ user.name|default:user.email }}</span>
+          </div>
+          <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-50 w-56 p-2 shadow-lg">
+            <li class="menu-title px-4 py-2">
+              <span class="text-xs text-base-content/50">{{ user.email }}</span>
+            </li>
+            <li><a href="{% url 'users:profile' %}">Profile</a></li>
+            <li>
+              <form method="post" action="{% url 'account_logout' %}">
+                {% csrf_token %}
+                <button type="submit" class="w-full text-left">Logout</button>
+              </form>
+            </li>
+          </ul>
+        </div>
+      {% else %}
+        <a href="{% url 'account_login' %}" class="btn btn-primary btn-sm">Login</a>
+        <a href="{% url 'account_signup' %}" class="btn btn-ghost btn-sm">Sign Up</a>
+      {% endif %}
+    </div>
+  </div>
+
+  <main class="container mx-auto px-4 py-6">
+    {% if messages %}
+      {% for message in messages %}
+        <div class="alert alert-{{ message.tags }} mb-4 flex justify-between" x-data="{ show: true }" x-show="show" x-init="setTimeout(() => show = false, 5000)" x-transition>
+          <span>{{ message }}</span>
+          <button @click="show = false" class="btn btn-ghost btn-xs">✕</button>
+        </div>
+      {% endfor %}
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+
+  {% block extra_scripts %}{% endblock %}
+  <script nonce="{{ csp_nonce }}">
+    // Persistent tree state that survives HTMX swaps
+    window.__treeState = window.__treeState || { expanded: [], selectedNode: null, editingTree: false };
+
+    function treeState() {
+      return {
+        expanded: new Set(window.__treeState.expanded),
+        selectedNode: window.__treeState.selectedNode,
+        parentMap: {},
+        init() {
+          var self = this;
+          this.$el.querySelectorAll('.tree-node-wrapper').forEach(function(el) {
+            var id = el.dataset.nodeId;
+            var group = el.parentElement;
+            if (group && group.classList.contains('tree-group')) {
+              self.parentMap[id] = group.dataset.parentId;
+            }
+          });
+          // Re-expand ancestors of selected node to ensure visibility
+          if (this.selectedNode) {
+            this.expandAncestors(this.selectedNode);
+            this.expanded.add(this.selectedNode);
+          }
+          this._persist();
+          this.$nextTick(function() { lucide.createIcons(); });
+          // Listen for external selection requests
+          window.addEventListener('tree:select', function(e) {
+            self.selectNode(e.detail.nodeId);
+          });
+        },
+        _persist() {
+          window.__treeState.expanded = Array.from(this.expanded);
+          window.__treeState.selectedNode = this.selectedNode;
+        },
+        toggle(nodeId) {
+          if (this.expanded.has(nodeId)) {
+            this.expanded.delete(nodeId);
+          } else {
+            this.expanded.add(nodeId);
+          }
+          this._persist();
+          this.$nextTick(function() { lucide.createIcons(); });
+        },
+        selectNode(nodeId) {
+          this.selectedNode = nodeId;
+          this.expandAncestors(nodeId);
+          this.expanded.add(nodeId);
+          this._persist();
+          window.location.hash = nodeId;
+          this.$nextTick(function() { lucide.createIcons(); });
+        },
+        expandAncestors(nodeId) {
+          var pid = this.parentMap[nodeId];
+          while (pid) {
+            this.expanded.add(pid);
+            pid = this.parentMap[pid];
+          }
+        }
+      };
+    }
+
+    window.selectTreeNode = function(nodeId) {
+      window.__treeState = window.__treeState || { expanded: [], selectedNode: null, editingTree: false };
+      window.__treeState.selectedNode = nodeId;
+      window.location.hash = nodeId;
+      window.dispatchEvent(new CustomEvent('tree:select', { detail: { nodeId: nodeId } }));
+    };
+
+    function initTreeSortable(panel) {
+      var csrfToken = panel.closest('[hx-headers]')
+        ? '{{ csrf_token }}'
+        : document.querySelector('[name=csrfmiddlewaretoken]')?.value || '{{ csrf_token }}';
+      var reorderUrl = panel.dataset.reorderUrl;
+      var moveUrlTemplate = panel.dataset.moveUrlTemplate;
+
+      panel.querySelectorAll('.tree-group').forEach(function(group) {
+        if (group._sortable) group._sortable.destroy();
+        group._sortable = Sortable.create(group, {
+          group: { name: 'tree', pull: true, put: true },
+          handle: '.drag-handle',
+          draggable: '> .tree-node-wrapper',
+          animation: 150,
+          fallbackOnBody: true,
+          swapThreshold: 0.65,
+          ghostClass: 'opacity-30',
+          onEnd: function(evt) {
+            var moved = evt.item;
+            var nodeId = moved.dataset.nodeId;
+            var newParentId = evt.to.dataset.parentId;
+            var oldParentId = evt.from.dataset.parentId;
+            var headers = { 'X-CSRFToken': csrfToken };
+
+            if (newParentId !== oldParentId) {
+              var moveUrl = moveUrlTemplate.replace('00000000-0000-0000-0000-000000000000', nodeId);
+              var form = new FormData();
+              form.append('new_parent_id', newParentId);
+              fetch(moveUrl, { method: 'POST', body: form, headers: headers })
+                .then(function(r) { if (r.ok) return r.text(); })
+                .then(function(html) {
+                  if (html) {
+                    panel.innerHTML = html;
+                    htmx.process(panel);
+                    lucide.createIcons();
+                    if (typeof Alpine !== 'undefined') Alpine.initTree(panel);
+                    initTreeSortable(panel);
+                  }
+                });
+            } else {
+              var siblings = evt.to.querySelectorAll(':scope > .tree-node-wrapper');
+              var form = new FormData();
+              siblings.forEach(function(el) { form.append('node_ids', el.dataset.nodeId); });
+              fetch(reorderUrl, { method: 'POST', body: form, headers: headers })
+                .then(function(r) { if (r.ok) return r.text(); })
+                .then(function(html) {
+                  if (html) {
+                    panel.innerHTML = html;
+                    htmx.process(panel);
+                    lucide.createIcons();
+                    if (typeof Alpine !== 'undefined') Alpine.initTree(panel);
+                    initTreeSortable(panel);
+                  }
+                });
+            }
+          }
+        });
+      });
+    }
+
+    function initMoveSortable(container) {
+      var el = container.querySelector('[data-moved-post-id]');
+      if (!el || el._sortableInit) return;
+      var movedId = el.dataset.movedPostId;
+      var posInput = document.getElementById('move-position-input-' + movedId);
+      if (!posInput) return;
+      el._sortableInit = true;
+      Sortable.create(el, {
+        animation: 150,
+        forceFallback: true,
+        fallbackOnBody: true,
+        fallbackTolerance: 3,
+        draggable: '> div[data-id]',
+        handle: '.drag-handle',
+        onEnd: function() {
+          var items = el.querySelectorAll('[data-id]');
+          for (var i = 0; i < items.length; i++) {
+            if (items[i].dataset.id === movedId) {
+              posInput.value = i;
+              break;
+            }
+          }
+        }
+      });
+    }
+
+    lucide.createIcons();
+
+    // Render math (KaTeX) and syntax highlighting (Prism.js)
+    function initRenderers(container) {
+      var el = container || document.body;
+      if (typeof renderMathInElement !== 'undefined') {
+        renderMathInElement(el, {
+          delimiters: [
+            {left: '$$', right: '$$', display: true},
+            {left: '$', right: '$', display: false},
+            {left: '\\(', right: '\\)', display: false},
+            {left: '\\[', right: '\\]', display: true}
+          ],
+          throwOnError: false
+        });
+      }
+      if (typeof Prism !== 'undefined') {
+        Prism.highlightAllUnder(el);
+      }
+    }
+    initRenderers();
+
+    // TinyMCE initialization helper
+    function initTinyMCE(container) {
+      var textareas = (container || document).querySelectorAll('textarea.tinymce-editor');
+      textareas.forEach(function(el) {
+        if (el._tinymceInit) return;
+        el._tinymceInit = true;
+        var uploadUrl = el.dataset.uploadUrl || '';
+        tinymce.init({
+          target: el,
+          height: 200,
+          menubar: false,
+          skin: false,
+          content_css: [
+            '{% static "tinymce/skins/content/default/content.min.css" %}',
+            'https://cdn.jsdelivr.net/npm/prismjs@1/themes/prism.min.css'
+          ],
+          plugins: 'autolink lists link image code codesample table',
+          toolbar: 'bold italic underline strikethrough | bullist numlist | blockquote codesample code | link image table | math | removeformat',
+          branding: false,
+          promotion: false,
+          license_key: 'gpl',
+          images_upload_url: uploadUrl,
+          images_upload_handler: function(blobInfo) {
+            return new Promise(function(resolve, reject) {
+              if (!uploadUrl) { reject('No upload URL configured'); return; }
+              var form = new FormData();
+              form.append('file', blobInfo.blob(), blobInfo.filename());
+              fetch(uploadUrl, {
+                method: 'POST',
+                body: form,
+                headers: { 'X-CSRFToken': '{{ csrf_token }}' }
+              })
+              .then(function(r) { return r.json(); })
+              .then(function(data) {
+                if (data.location) resolve(data.location);
+                else reject(data.error || 'Upload failed');
+              })
+              .catch(function() { reject('Upload failed'); });
+            });
+          },
+          setup: function(editor) {
+            editor.on('change', function() { editor.save(); });
+            // Math button: inserts LaTeX (rendered by KaTeX on display)
+            editor.ui.registry.addButton('math', {
+              icon: 'superscript',
+              tooltip: 'Insert math (LaTeX)',
+              onAction: function() {
+                var makeConfig = function(latex, display) {
+                  var preview = '';
+                  if (latex && typeof katex !== 'undefined') {
+                    try {
+                      preview = katex.renderToString(latex, { displayMode: display === 'block', throwOnError: false });
+                    } catch(e) {
+                      preview = '<span style="color:#e53e3e">' + e.message.replace(/</g, '&lt;') + '</span>';
+                    }
+                  }
+                  return {
+                    title: 'Insert Math (LaTeX)',
+                    body: { type: 'panel', items: [
+                      { type: 'textarea', name: 'latex', label: 'LaTeX expression (e.g. x^2 + y^2 = z^2)' },
+                      { type: 'selectbox', name: 'display', label: 'Display mode', items: [
+                        { value: 'inline', text: 'Inline (within text)' },
+                        { value: 'block', text: 'Block (separate line)' }
+                      ]},
+                      { type: 'htmlpanel', html: '<div style="padding:10px;min-height:48px;border:1px solid #ccc;border-radius:6px;margin-top:4px;text-align:center;background:#fafafa;font-size:1.1em;">' + (preview || '<span style="color:#aaa">Preview</span>') + '</div>' }
+                    ]},
+                    initialData: { latex: latex, display: display },
+                    buttons: [
+                      { type: 'cancel', text: 'Cancel' },
+                      { type: 'submit', text: 'Insert', primary: true }
+                    ],
+                    onChange: function(api) {
+                      var d = api.getData();
+                      api.redial(makeConfig(d.latex, d.display));
+                      api.setData(d);
+                    },
+                    onSubmit: function(api) {
+                      var data = api.getData();
+                      if (data.latex) {
+                        if (data.display === 'block') {
+                          editor.insertContent('<p>$$' + data.latex + '$$</p>');
+                        } else {
+                          editor.insertContent('$' + data.latex + '$');
+                        }
+                      }
+                      api.close();
+                    }
+                  };
+                };
+                editor.windowManager.open(makeConfig('', 'inline'));
+              }
+            });
+          }
+        });
+      });
+    }
+    initTinyMCE();
+
+    // Handle selectDiscussion event from discussion creation
+    document.body.addEventListener('selectDiscussion', function(evt) {
+      var detail = evt.detail;
+      if (detail && detail.id && detail.spaceId) {
+        window.__treeState = window.__treeState || { expanded: [], selectedNode: null, editingTree: false };
+        window.__treeState.selectedNode = detail.id;
+        // Refresh tree so new node appears, then load discussion
+        var treePanel = document.getElementById('tree-panel');
+        if (treePanel) {
+          htmx.trigger(treePanel, 'refreshTree');
+        }
+        var panel = document.getElementById('conversation-panel');
+        if (panel) {
+          var url = '/spaces/' + detail.spaceId + '/discussions/' + detail.id + '/';
+          htmx.ajax('GET', url, { target: panel, swap: 'innerHTML' });
+        }
+      }
+    });
+
+    document.body.addEventListener('htmx:afterSwap', function(evt) {
+      lucide.createIcons();
+      initRenderers(evt.detail.target);
+      if (typeof Alpine !== 'undefined') {
+        Alpine.initTree(evt.detail.target);
+      }
+      // Re-init TinyMCE in swapped content
+      initTinyMCE(evt.detail.target);
+      var panel = document.getElementById('tree-panel');
+      if (panel && typeof Sortable !== 'undefined' && (evt.detail.target === panel || panel.contains(evt.detail.target))) {
+        initTreeSortable(panel);
+      }
+      // Initialize children reorder sortable
+      var childrenList = document.getElementById('children-list');
+      if (childrenList && typeof Sortable !== 'undefined' && !childrenList._sortable) {
+        childrenList._sortable = Sortable.create(childrenList, {
+          handle: '.child-drag-handle',
+          draggable: '> .child-item',
+          animation: 150,
+          ghostClass: 'opacity-30',
+          onEnd: function(sortEvt) {
+            var items = childrenList.querySelectorAll(':scope > .child-item');
+            var form = new FormData();
+            items.forEach(function(el) { form.append('node_ids', el.dataset.childId); });
+            fetch(childrenList.dataset.reorderUrl, {
+              method: 'POST',
+              body: form,
+              headers: { 'X-CSRFToken': '{{ csrf_token }}' }
+            }).then(function(resp) {
+              if (!resp.ok) {
+                console.error('Reorder failed:', resp.status);
+                resp.text().then(function(html) {
+                  var panel = document.getElementById('conversation-panel');
+                  if (panel) { panel.innerHTML = html; htmx.process(panel); }
+                });
+              }
+            }).catch(function() {
+              window.location.reload();
+            });
+          }
+        });
+      }
+      // Initialize move-post position sortable
+      if (typeof Sortable !== 'undefined') {
+        initMoveSortable(evt.detail.target);
+      }
+    });
+    // HTMX progress bar
+    var bar = document.getElementById('htmx-progress');
+    document.body.addEventListener('htmx:beforeRequest', function() {
+      bar.style.display = 'block';
+      bar.style.width = '70%';
+    });
+    document.body.addEventListener('htmx:afterRequest', function() {
+      bar.style.width = '100%';
+      setTimeout(function() { bar.style.display = 'none'; bar.style.width = '0%'; }, 300);
+    });
+  </script>
+  <!-- DaisyUI confirm modal (replaces browser confirm) -->
+  <dialog id="confirm-modal" class="modal">
+    <div class="modal-box max-w-sm">
+      <p id="confirm-modal-text" class="py-2"></p>
+      <div class="modal-action">
+        <button id="confirm-modal-yes" class="btn btn-primary btn-sm">Confirm</button>
+        <button id="confirm-modal-no" class="btn btn-ghost btn-sm">Cancel</button>
+      </div>
+    </div>
+  </dialog>
+  <script nonce="{{ csp_nonce }}">
+    (function() {
+      var dialog = document.getElementById('confirm-modal');
+      var text = document.getElementById('confirm-modal-text');
+      var yesBtn = document.getElementById('confirm-modal-yes');
+      var noBtn = document.getElementById('confirm-modal-no');
+      document.body.addEventListener('htmx:confirm', function(e) {
+        if (!e.detail.question) return;
+        e.preventDefault();
+        text.textContent = e.detail.question;
+        dialog.showModal();
+        function cleanup() {
+          yesBtn.removeEventListener('click', onYes);
+          noBtn.removeEventListener('click', onNo);
+          dialog.removeEventListener('close', onNo);
+        }
+        function onYes() { cleanup(); dialog.close(); e.detail.issueRequest(true); }
+        function onNo() { cleanup(); dialog.close(); }
+        yesBtn.addEventListener('click', onYes);
+        noBtn.addEventListener('click', onNo);
+        dialog.addEventListener('close', onNo);
+      });
+    })();
+  </script>
+</body>
+</html>

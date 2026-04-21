@@ -1,0 +1,17 @@
+{% load opinions_tags %}
+<div id="opinion-actions"
+     hx-target="#opinion-actions"
+     hx-swap="outerHTML">
+  <div class="flex gap-2">
+  {% for otype in space.opinion_types %}
+    <button hx-post="{% url 'opinions:toggle_opinion' space_id=space.pk node_id=node.pk %}"
+            hx-vals='{"type": "{{ otype }}"}'
+            class="btn btn-xs {% if otype == 'agree' %}btn-success{% elif otype == 'disagree' %}btn-error{% else %}btn-ghost{% endif %} {% if user_opinion != otype %}btn-outline{% endif %}">
+      {{ otype|title }}
+      {% if opinions %}
+        <span class="badge badge-xs">{{ opinions|dict_get:otype|default:"0" }}</span>
+      {% endif %}
+    </button>
+  {% endfor %}
+  </div>
+</div>

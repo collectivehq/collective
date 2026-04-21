@@ -1,0 +1,152 @@
+import uuid
+
+from django.conf import settings
+from django.contrib.postgres.fields import ArrayField
+from django.core.exceptions import ValidationError
+from django.db import models
+from django.db.models import UniqueConstraint
+from django.utils import timezone
+
+VALID_OPINION_TYPES = {"agree", "abstain", "disagree"}
+VALID_REACTION_TYPES = {"like", "dislike"}
+
+
+def validate_opinion_types(value: list[str]) -> None:
+    invalid = set(value) - VALID_OPINION_TYPES
+    if invalid:
+        raise ValidationError(f"Invalid opinion types: {invalid}. Must be a subset of {VALID_OPINION_TYPES}.")
+
+
+def validate_reaction_types(value: list[str]) -> None:
+    invalid = set(value) - VALID_REACTION_TYPES
+    if invalid:
+        raise ValidationError(f"Invalid reaction types: {invalid}. Must be a subset of {VALID_REACTION_TYPES}.")
+
+
+class Space(models.Model):  # type: ignore[django-manager-missing]
+    class Lifecycle(models.TextChoices):
+        DRAFT = "draft", "Draft"
+        OPEN = "open", "Open"
+        CLOSED = "closed", "Closed"
+        ARCHIVED = "archived", "Archived"
+
+    class ReactionType(models.TextChoices):
+        LIKE = "like", "Like"
+        DISLIKE = "dislike", "Dislike"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    root_discussion = models.OneToOneField(
+        "nodes.Node",
+        on_delete=models.PROTECT,
+        related_name="root_of_space",
+        null=True,
+        blank=True,
+    )
+    lifecycle = models.CharField(max_length=20, choices=Lifecycle.choices, default=Lifecycle.DRAFT)
+    starts_at = models.DateTimeField(null=True, blank=True)
+    ends_at = models.DateTimeField(null=True, blank=True)
+    opinion_types = ArrayField(
+        models.CharField(max_length=20),
+        default=list,
+        blank=True,
+        validators=[validate_opinion_types],
+        help_text='Subset of ["agree", "abstain", "disagree"]',
+    )
+    reaction_types = ArrayField(
+        models.CharField(max_length=20),
+        default=list,
+        blank=True,
+        validators=[validate_reaction_types],
+        help_text='Subset of ["like", "dislike"]',
+    )
+    edit_window_minutes = models.PositiveIntegerField(
+        default=0,
+        help_text="Minutes after posting during which edits are allowed. 0 = editing disabled.",
+    )
+    default_role = models.ForeignKey(
+        "spaces.Role",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="default_for_spaces",
+    )
+    template_slug = models.CharField(max_length=100, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="created_spaces")
+    created_at = models.DateTimeField(auto_now_add=True)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "spaces"
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return self.title
+
+    @property
+    def is_active(self) -> bool:
+        if self.lifecycle != self.Lifecycle.OPEN or self.deleted_at is not None:
+            return False
+        now = timezone.now()
+        if self.ends_at and now >= self.ends_at:
+            return False
+        if self.starts_at and now < self.starts_at:
+            return False
+        return True
+
+
+class Role(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    space = models.ForeignKey(Space, on_delete=models.CASCADE, related_name="roles")
+    label = models.CharField(max_length=100)
+    can_post = models.BooleanField(default=True)
+    can_shape_tree = models.BooleanField(default=False)
+    can_set_permissions = models.BooleanField(default=False)
+    can_resolve = models.BooleanField(default=False)
+    can_reorganise = models.BooleanField(default=False)
+    can_moderate = models.BooleanField(default=False)
+    can_close_space = models.BooleanField(default=False)
+    can_opine = models.BooleanField(default=True)
+    can_react = models.BooleanField(default=True)
+    is_default = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = "roles"
+        constraints = [
+            UniqueConstraint(fields=["space", "label"], name="roles_space_label_unique"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.label} ({self.space.title})"
+
+
+class SpaceParticipant(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    space = models.ForeignKey(Space, on_delete=models.CASCADE, related_name="participants")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="participations")
+    role = models.ForeignKey(Role, on_delete=models.PROTECT, related_name="participants")
+    joined_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "space_participants"
+        constraints = [
+            UniqueConstraint(fields=["space", "user"], name="space_participants_space_user_unique"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.user} in {self.space}"
+
+
+class SpaceInvite(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    space = models.ForeignKey(Space, on_delete=models.CASCADE, related_name="invites")
+    role = models.ForeignKey(Role, on_delete=models.CASCADE, related_name="invites")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="created_invites")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "space_invites"
+
+    def __str__(self) -> str:
+        return f"Invite to {self.space} as {self.role}"

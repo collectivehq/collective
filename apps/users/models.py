@@ -1,0 +1,21 @@
+import uuid
+
+from django.contrib.auth.models import AbstractUser
+from django.contrib.postgres.fields import ArrayField
+from django.db import models
+
+
+class User(AbstractUser):  # type: ignore[django-manager-missing]
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=255, blank=True)
+    email = models.EmailField(unique=True)
+    tags = ArrayField(models.CharField(max_length=50), default=list, blank=True)
+
+    USERNAME_FIELD = "email"
+    REQUIRED_FIELDS = ["username"]
+
+    class Meta:
+        db_table = "users"
+
+    def __str__(self) -> str:
+        return self.name or self.email

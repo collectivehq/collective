@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}Participants — {{ space.title }}{% endblock %}
+{% block content %}
+<div class="max-w-5xl mx-auto">
+  <div class="flex items-center justify-between mb-4">
+    <h1 class="text-xl font-bold">Participants</h1>
+    <div class="flex gap-2">
+      {% if can_set_permissions %}
+        <a href="{% url 'spaces:permissions' space_id=space.pk %}" class="btn btn-ghost btn-sm">
+          <i data-lucide="shield" class="w-4 h-4"></i> Permissions
+        </a>
+      {% endif %}
+      <a href="{% url 'spaces:detail' space_id=space.pk %}" class="btn btn-ghost btn-sm">← Back</a>
+    </div>
+  </div>
+
+  {# Add participant form #}
+  {% if can_manage %}
+  <div class="card bg-base-100 shadow mb-4">
+    <div class="card-body py-3 px-4">
+      <form method="post" action="{% url 'spaces:participant_add' space_id=space.pk %}" class="flex items-center gap-2">
+        {% csrf_token %}
+        <input type="email" name="email" placeholder="Add participant by email…"
+               class="input input-bordered input-sm flex-1" required>
+        <button type="submit" class="btn btn-primary btn-sm gap-1">
+          <i data-lucide="user-plus" class="w-4 h-4"></i> Add
+        </button>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+
+  {# Participants table #}
+  <div class="overflow-x-auto">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Role</th>
+          <th>Joined</th>
+          {% if can_manage %}<th></th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in participants %}
+        <tr>
+          <td>
+            <div>
+              <span class="font-medium">{{ p.user.name|default:"—" }}</span>
+              <span class="text-xs text-base-content/60 ml-1">{{ p.user.email }}</span>
+            </div>
+          </td>
+          <td>
+            {% if can_set_permissions and p.user != user %}
+              <form method="post" action="{% url 'spaces:participant_role_update' space_id=space.pk participant_id=p.pk %}" class="inline flex gap-1 items-center">
+                {% csrf_token %}
+                <select name="role_id" class="select select-bordered select-xs"
+                        onchange="this.form.submit()">
+                  {% for role in roles %}
+                    <option value="{{ role.pk }}" {% if role.pk == p.role.pk %}selected{% endif %}>{{ role.label }}</option>
+                  {% endfor %}
+                </select>
+              </form>
+            {% else %}
+              <span class="badge badge-outline badge-sm">{{ p.role.label }}</span>
+            {% endif %}
+          </td>
+          <td class="text-xs text-base-content/60">{{ p.joined_at|date:"M d, Y" }}</td>
+          {% if can_manage %}
+          <td>
+            {% if p.user != user %}
+            <form hx-post="{% url 'spaces:participant_remove' space_id=space.pk participant_id=p.pk %}"
+                  class="inline">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-ghost btn-xs text-error tooltip" data-tip="Remove"
+                      hx-confirm="Remove {{ p.user.name|default:p.user.email }} from this space?">
+                <i data-lucide="user-x" class="w-3.5 h-3.5"></i>
+              </button>
+            </form>
+            {% endif %}
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {# Invite links #}
+  {% if can_manage %}
+  <div class="divider text-xs text-base-content/60 mt-6">Invite Links</div>
+
+  {% if invites %}
+  <div class="space-y-2 mb-4">
+    {% for invite in invites %}
+    <div class="flex items-center gap-2 bg-base-200 rounded-lg px-3 py-2 text-sm" id="invite-{{ invite.pk }}">
+      <i data-lucide="link" class="w-4 h-4 text-base-content/60 flex-shrink-0"></i>
+      <code class="flex-1 text-xs select-all truncate">{{ request.scheme }}://{{ request.get_host }}{% url 'spaces:invite_accept' space_id=space.pk invite_id=invite.pk %}</code>
+      <span class="badge badge-outline badge-xs">{{ invite.role.label }}</span>
+      <span class="text-xs text-base-content/60">by {{ invite.created_by.name|default:invite.created_by.email }}</span>
+      <form hx-post="{% url 'spaces:invite_delete' space_id=space.pk invite_id=invite.pk %}"
+            hx-target="#invite-{{ invite.pk }}" hx-swap="outerHTML" class="inline">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-ghost btn-xs text-error tooltip" data-tip="Delete invite"
+                hx-confirm="Delete this invite link?">
+          <i data-lucide="trash-2" class="w-3 h-3"></i>
+        </button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="text-sm text-base-content/60 mb-4">No invite links yet.</p>
+  {% endif %}
+
+  <div class="card bg-base-100 border border-dashed border-base-content/30">
+    <div class="card-body py-3 px-4">
+      <form method="post" action="{% url 'spaces:invite_create' space_id=space.pk %}" class="flex items-center gap-2">
+        {% csrf_token %}
+        <i data-lucide="link" class="w-4 h-4 text-base-content/60 flex-shrink-0"></i>
+        <span class="text-sm">Create invite link as</span>
+        <select name="role_id" class="select select-bordered select-xs">
+          {% for role in roles %}
+            <option value="{{ role.pk }}" {% if space.default_role_id == role.pk %}selected{% endif %}>{{ role.label }}</option>
+          {% endfor %}
+          {% if not roles %}
+            {% if space.default_role %}
+              <option value="{{ space.default_role.pk }}">{{ space.default_role.label }}</option>
+            {% endif %}
+          {% endif %}
+        </select>
+        <button type="submit" class="btn btn-primary btn-sm">Create</button>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

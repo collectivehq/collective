@@ -1,0 +1,15 @@
+{% extends "account/_base_card.html" %}
+{% load i18n %}
+
+{% block title %}Sign Out — Collective{% endblock %}
+
+{% block card_body_class %}text-center{% endblock %}
+{% block card_title %}{% trans "Sign Out" %}{% endblock %}
+
+{% block card_content %}
+      <p class="mb-6">{% trans "Are you sure you want to sign out?" %}</p>
+      <form method="post" action="{% url 'account_logout' %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary w-full">{% trans "Sign Out" %}</button>
+      </form>
+{% endblock %}
