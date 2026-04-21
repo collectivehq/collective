@@ -9,6 +9,7 @@ from django.views.decorators.http import require_POST
 
 from apps.nodes.models import Node
 from apps.opinions import services as opinion_services
+from apps.opinions.rate_limits import allow_toggle_request
 from apps.spaces.permissions import can_opine, can_react
 from apps.spaces.services import get_active_space, get_participant
 from apps.users.utils import get_user
@@ -24,6 +25,9 @@ def toggle_opinion(request: HttpRequest, space_id: str, node_id: str) -> HttpRes
 
     if not can_opine(user, node, participant=participant) or participant is None:
         raise PermissionDenied
+
+    if not allow_toggle_request(request=request, action="opinion", space_id=str(space.pk)):
+        return HttpResponse("Too many opinion toggles. Please wait a moment.", status=429)
 
     opinion_type = request.POST.get("type", "")
     if not opinion_type:
@@ -62,6 +66,9 @@ def toggle_reaction(request: HttpRequest, space_id: str, post_id: str) -> HttpRe
 
     if not can_react(user, post, participant=participant) or participant is None:
         raise PermissionDenied
+
+    if not allow_toggle_request(request=request, action="reaction", space_id=str(space.pk)):
+        return HttpResponse("Too many reaction toggles. Please wait a moment.", status=429)
 
     reaction_type = request.POST.get("type", "")
     if not reaction_type:

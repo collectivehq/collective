@@ -25,6 +25,7 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+node_modules/
 
 # PyInstaller
 #   Usually these files are written by a python script from a template
@@ -220,3 +221,6 @@ __marimo__/
 # Django
 media/
 staticfiles/
+
+# Ignore the generated Tailwind CSS file
+static/app.css

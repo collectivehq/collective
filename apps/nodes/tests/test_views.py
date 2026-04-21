@@ -38,6 +38,17 @@ class TestDiscussionDetailView:
         response = anon.get(reverse("nodes:discussion_detail", kwargs={"space_id": space.pk, "discussion_id": root.pk}))
         assert response.status_code == 302
 
+    def test_resolved_discussion_renders_reopen_dialog(self, space_with_host):
+        c, creator, space = space_with_host
+        root = space.root_discussion
+        node_services.resolve_discussion(discussion=root, resolution_type="accept", resolved_by=creator)
+
+        response = c.get(reverse("nodes:discussion_detail", kwargs={"space_id": space.pk, "discussion_id": root.pk}))
+
+        assert response.status_code == 200
+        assert f"reopenDiscussionDialog-{root.pk}".encode() in response.content
+        assert b"Reopen discussion" in response.content
+
 
 @pytest.mark.django_db
 class TestDiscussionCreateView:
@@ -74,6 +85,18 @@ class TestPostCreateView:
             {"content": "Hello World"},
         )
         assert response.status_code == 200
+
+    def test_save_post_as_draft(self, space_with_host):
+        c, creator, space = space_with_host
+        root = space.root_discussion
+        response = c.post(
+            reverse("nodes:post_create", kwargs={"space_id": space.pk, "discussion_id": root.pk}),
+            {"content": "Draft post", "save_draft": "true"},
+        )
+
+        assert response.status_code == 200
+        draft = Node.objects.get(space=space, deleted_at__isnull=True, node_type=Node.NodeType.POST)
+        assert draft.is_draft is True
 
     def test_empty_content_rejected(self, space_with_host):
         c, creator, space = space_with_host
@@ -143,6 +166,33 @@ class TestPostEditView:
             {"content": ""},
         )
         assert response.status_code == 400
+
+    def test_publish_draft(self, space_with_host):
+        c, creator, space = space_with_host
+        root = space.root_discussion
+        draft = node_services.create_post(discussion=root, author=creator, content="Original draft", is_draft=True)
+
+        response = c.post(
+            reverse("nodes:post_edit", kwargs={"space_id": space.pk, "post_id": draft.pk}),
+            {"content": "Published post", "publish": "true"},
+        )
+
+        assert response.status_code == 200
+        draft.refresh_from_db()
+        assert draft.is_draft is False
+        assert draft.content == "Published post"
+
+    def test_hidden_draft_forbidden_to_regular_participant(self, space_with_host_and_participant):
+        _, creator, part_c, _, space = space_with_host_and_participant
+        root = space.root_discussion
+        draft = node_services.create_post(discussion=root, author=creator, content="Hidden draft", is_draft=True)
+
+        response = part_c.post(
+            reverse("nodes:post_edit", kwargs={"space_id": space.pk, "post_id": draft.pk}),
+            {"content": "Hacked"},
+        )
+
+        assert response.status_code == 403
 
 
 @pytest.mark.django_db
@@ -429,7 +479,7 @@ class TestInactiveSpaceMutations:
             reverse("nodes:discussion_create", kwargs={"space_id": space.pk}),
             {"parent_id": str(root.pk), "label": "Denied"},
         )
-        assert response.status_code == 403
+        assert response.status_code == 404
 
     def test_discussion_move_on_closed_space(self, space_with_host):
         c, creator, space = space_with_host
@@ -440,7 +490,7 @@ class TestInactiveSpaceMutations:
             reverse("nodes:discussion_move", kwargs={"space_id": space.pk, "discussion_id": child.pk}),
             {"new_parent_id": str(root.pk)},
         )
-        assert response.status_code == 403
+        assert response.status_code == 404
 
     def test_discussion_merge_on_closed_space(self, space_with_host):
         c, creator, space = space_with_host
@@ -452,7 +502,7 @@ class TestInactiveSpaceMutations:
             reverse("nodes:discussion_merge", kwargs={"space_id": space.pk, "discussion_id": source.pk}),
             {"target_id": str(target.pk)},
         )
-        assert response.status_code == 403
+        assert response.status_code == 404
 
     def test_post_edit_on_closed_space(self, space_with_host):
         c, creator, space = space_with_host
@@ -463,7 +513,7 @@ class TestInactiveSpaceMutations:
             reverse("nodes:post_edit", kwargs={"space_id": space.pk, "post_id": post.pk}),
             {"content": "Edited"},
         )
-        assert response.status_code == 403
+        assert response.status_code == 404
 
 
 @pytest.mark.django_db
@@ -478,6 +528,56 @@ class TestPostRevisionsView:
         )
         assert response.status_code == 200
         assert b"Original" in response.content
+
+    def test_regular_participant_cannot_access_other_users_draft(self, space_with_host_and_participant):
+        _, creator, part_c, _, space = space_with_host_and_participant
+        root = space.root_discussion
+        draft = node_services.create_post(discussion=root, author=creator, content="Hidden draft", is_draft=True)
+
+        response = part_c.get(
+            reverse("nodes:post_revisions", kwargs={"space_id": space.pk, "post_id": draft.pk}),
+        )
+
+        assert response.status_code == 403
+
+
+@pytest.mark.django_db
+class TestDraftVisibility:
+    def test_author_sees_publish_action_and_footer_draft_badge(self, space_with_host):
+        c, creator, space = space_with_host
+        root = space.root_discussion
+        node_services.create_post(discussion=root, author=creator, content="Draft content", is_draft=True)
+
+        response = c.get(reverse("nodes:discussion_detail", kwargs={"space_id": space.pk, "discussion_id": root.pk}))
+
+        assert response.status_code == 200
+        assert b'data-role="publish-draft-action"' in response.content
+        assert b'data-role="draft-badge"' in response.content
+
+    def test_regular_participant_does_not_see_other_users_draft(self, space_with_host_and_participant):
+        facilitator_c, creator, part_c, joiner, space = space_with_host_and_participant
+        root = space.root_discussion
+        node_services.create_post(discussion=root, author=creator, content="Hidden draft", is_draft=True)
+
+        response = part_c.get(
+            reverse("nodes:discussion_detail", kwargs={"space_id": space.pk, "discussion_id": root.pk})
+        )
+
+        assert response.status_code == 200
+        assert b"Hidden draft" not in response.content
+
+    def test_facilitator_sees_participant_draft(self, space_with_host_and_participant):
+        facilitator_c, creator, part_c, joiner, space = space_with_host_and_participant
+        root = space.root_discussion
+        node_services.create_post(discussion=root, author=joiner, content="Participant draft", is_draft=True)
+
+        response = facilitator_c.get(
+            reverse("nodes:discussion_detail", kwargs={"space_id": space.pk, "discussion_id": root.pk})
+        )
+
+        assert response.status_code == 200
+        assert b"Participant draft" in response.content
+        assert b"Draft" in response.content
 
 
 @pytest.mark.django_db

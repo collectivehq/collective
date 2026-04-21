@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import uuid
 
+from django.db import transaction
 from django.db.models import Count
+from django.utils import timezone
 
 from apps.nodes.models import Node
 from apps.opinions.models import Opinion, Reaction
@@ -15,25 +17,31 @@ def toggle_opinion(
     node: Node,
     opinion_type: str,
 ) -> Opinion | None:
-    space: Space = node.space
+    space = Space.objects.only("pk", "opinion_types").get(pk=node.space_id)
     if opinion_type not in space.opinion_types:
         msg = f"Opinion type '{opinion_type}' is not enabled for this space"
         raise ValueError(msg)
 
-    existing = Opinion.objects.filter(participant=participant, node=node).first()
-    if existing:
-        if existing.opinion_type == opinion_type:
-            existing.delete()
-            return None
-        existing.opinion_type = opinion_type
-        existing.save(update_fields=["opinion_type", "updated_at"])
-        return existing
+    with transaction.atomic():
+        SpaceParticipant.objects.select_for_update().get(pk=participant.pk)
+        existing = Opinion.objects.select_for_update().filter(participant=participant, node=node).first()
+        if existing:
+            if existing.opinion_type == opinion_type:
+                existing.delete()
+                Space.objects.filter(pk=space.pk).update(updated_at=timezone.now())
+                return None
+            existing.opinion_type = opinion_type
+            existing.save(update_fields=["opinion_type", "updated_at"])
+            Space.objects.filter(pk=space.pk).update(updated_at=timezone.now())
+            return existing
 
-    return Opinion.objects.create(
-        participant=participant,
-        node=node,
-        opinion_type=opinion_type,
-    )
+        opinion = Opinion.objects.create(
+            participant=participant,
+            node=node,
+            opinion_type=opinion_type,
+        )
+        Space.objects.filter(pk=space.pk).update(updated_at=timezone.now())
+        return opinion
 
 
 def get_opinion_counts(node: Node) -> dict[str, int]:
@@ -60,7 +68,7 @@ def toggle_reaction(
     post: Node,
     reaction_type: str,
 ) -> Reaction | None:
-    space: Space = post.space
+    space = Space.objects.only("pk", "reaction_types").get(pk=post.space_id)
     if not space.reaction_types:
         msg = "Reactions are disabled for this space"
         raise ValueError(msg)
@@ -68,20 +76,26 @@ def toggle_reaction(
         msg = f"{reaction_type.title()} reactions are not enabled for this space"
         raise ValueError(msg)
 
-    existing = Reaction.objects.filter(participant=participant, post=post).first()
-    if existing:
-        if existing.reaction_type == reaction_type:
-            existing.delete()
-            return None
-        existing.reaction_type = reaction_type
-        existing.save(update_fields=["reaction_type"])
-        return existing
+    with transaction.atomic():
+        SpaceParticipant.objects.select_for_update().get(pk=participant.pk)
+        existing = Reaction.objects.select_for_update().filter(participant=participant, post=post).first()
+        if existing:
+            if existing.reaction_type == reaction_type:
+                existing.delete()
+                Space.objects.filter(pk=space.pk).update(updated_at=timezone.now())
+                return None
+            existing.reaction_type = reaction_type
+            existing.save(update_fields=["reaction_type"])
+            Space.objects.filter(pk=space.pk).update(updated_at=timezone.now())
+            return existing
 
-    return Reaction.objects.create(
-        participant=participant,
-        post=post,
-        reaction_type=reaction_type,
-    )
+        reaction = Reaction.objects.create(
+            participant=participant,
+            post=post,
+            reaction_type=reaction_type,
+        )
+        Space.objects.filter(pk=space.pk).update(updated_at=timezone.now())
+        return reaction
 
 
 def get_participant_reactions_batch(

@@ -14,6 +14,8 @@ register = template.Library()
 @register.filter
 def is_edited(post: Node) -> bool:
     """Check if a post has been edited (updated_at > created_at + 1 second)."""
+    if post.is_draft:
+        return False
     if not post.updated_at or not post.created_at:
         return False
     return (post.updated_at - post.created_at) > timedelta(seconds=1)

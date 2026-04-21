@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 from django.utils import timezone
 
+from apps.nodes import services as node_services
 from apps.nodes.models import Node
 from apps.nodes.tests.factories import NodeFactory
 from apps.spaces import services as space_services
@@ -18,7 +19,10 @@ from apps.spaces.permissions import (
     can_resolve_discussion,
     can_set_permissions,
     can_shape_tree,
+    can_view_drafts,
+    can_view_post,
     can_view_space,
+    get_post_edit_denial_reason,
 )
 from apps.users.tests.factories import UserFactory
 
@@ -138,6 +142,17 @@ class TestCanSetPermissions:
 
 
 @pytest.mark.django_db
+class TestCanViewDrafts:
+    def test_facilitator_can_view_drafts(self, open_space_with_users):
+        space, creator, _, _ = open_space_with_users
+        assert can_view_drafts(creator, space) is True
+
+    def test_participant_cannot_view_drafts(self, open_space_with_users):
+        space, _, participant, _ = open_space_with_users
+        assert can_view_drafts(participant, space) is False
+
+
+@pytest.mark.django_db
 class TestCanReorganise:
     def test_facilitator_can_reorganise(self, open_space_with_users):
         space, creator, _, _ = open_space_with_users
@@ -156,31 +171,33 @@ class TestCanReorganise:
 class TestCanEditPost:
     def test_author_can_edit(self, open_space_with_users):
         space, _, participant_user, _ = open_space_with_users
-        space.edit_window_minutes = 525600  # unlimited
+        space.edit_window_minutes = None
         space.save()
         node = NodeFactory(space=space, node_type="post", author=participant_user)
         assert can_edit_post(participant_user, node, space) is True
+        assert get_post_edit_denial_reason(participant_user, node, space) is None
 
     def test_non_author_cannot_edit(self, open_space_with_users):
         space, creator, participant_user, _ = open_space_with_users
-        space.edit_window_minutes = 525600
+        space.edit_window_minutes = None
         space.save()
         node = NodeFactory(space=space, node_type="post", author=creator)
-        result = can_edit_post(participant_user, node, space)
-        assert result == "Permission denied"
+        assert can_edit_post(participant_user, node, space) is False
+        assert get_post_edit_denial_reason(participant_user, node, space) == "Permission denied"
 
     def test_moderator_can_edit_other(self, open_space_with_users):
         space, creator, participant_user, _ = open_space_with_users
         node = NodeFactory(space=space, node_type="post", author=participant_user)
         assert can_edit_post(creator, node, space) is True
+        assert get_post_edit_denial_reason(creator, node, space) is None
 
     def test_editing_disabled(self, open_space_with_users):
         space, _, participant_user, _ = open_space_with_users
         space.edit_window_minutes = 0
         space.save()
         node = NodeFactory(space=space, node_type="post", author=participant_user)
-        result = can_edit_post(participant_user, node, space)
-        assert result == "Editing is disabled"
+        assert can_edit_post(participant_user, node, space) is False
+        assert get_post_edit_denial_reason(participant_user, node, space) == "Editing is disabled"
 
     def test_edit_window_expired(self, open_space_with_users):
         space, _, participant_user, _ = open_space_with_users
@@ -194,8 +211,8 @@ class TestCanEditPost:
         # Backdate created_at after creation
         Node.objects.filter(pk=node.pk).update(created_at=timezone.now() - timezone.timedelta(minutes=10))
         node.refresh_from_db()
-        result = can_edit_post(participant_user, node, space)
-        assert result == "Edit window has expired"
+        assert can_edit_post(participant_user, node, space) is False
+        assert get_post_edit_denial_reason(participant_user, node, space) == "Edit window has expired"
 
     def test_moderator_bypasses_edit_window(self, open_space_with_users):
         space, creator, participant_user, _ = open_space_with_users
@@ -210,6 +227,7 @@ class TestCanEditPost:
         node.refresh_from_db()
         # Creator is Facilitator (moderator) — should bypass edit window
         assert can_edit_post(creator, node, space) is True
+        assert get_post_edit_denial_reason(creator, node, space) is None
 
 
 @pytest.mark.django_db
@@ -221,6 +239,30 @@ class TestCanViewSpace:
     def test_outsider_cannot_view(self, open_space_with_users):
         space, _, _, outsider = open_space_with_users
         assert can_view_space(outsider, space) is False
+
+
+@pytest.mark.django_db
+class TestCanViewPost:
+    def test_author_can_view_own_draft(self, open_space_with_users):
+        space, _, participant_user, _ = open_space_with_users
+        draft = node_services.create_post(
+            discussion=space.root_discussion, author=participant_user, content="Draft", is_draft=True
+        )
+        assert can_view_post(participant_user, draft) is True
+
+    def test_facilitator_can_view_other_users_draft(self, open_space_with_users):
+        space, creator, participant_user, _ = open_space_with_users
+        draft = node_services.create_post(
+            discussion=space.root_discussion, author=participant_user, content="Draft", is_draft=True
+        )
+        assert can_view_post(creator, draft) is True
+
+    def test_participant_cannot_view_other_users_draft(self, open_space_with_users):
+        space, creator, participant_user, _ = open_space_with_users
+        draft = node_services.create_post(
+            discussion=space.root_discussion, author=creator, content="Draft", is_draft=True
+        )
+        assert can_view_post(participant_user, draft) is False
 
 
 @pytest.mark.django_db

@@ -5,8 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}Collective{% endblock %}</title>
-  <link href="https://cdn.jsdelivr.net/npm/daisyui@4/dist/full.min.css" rel="stylesheet" type="text/css" />
-  <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+  <link rel="stylesheet" href="{% static 'app.css' %}">
   <script src="https://unpkg.com/htmx.org@2.0/dist/htmx.min.js"></script>
   <script src="https://unpkg.com/alpinejs@3/dist/cdn.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js"></script>
@@ -18,7 +17,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1/themes/prism.min.css">
   <style>
     [x-cloak] { display: none !important; }
-    #htmx-progress { position: fixed; top: 0; left: 0; height: 3px; background: oklch(var(--p)); z-index: 9999; transition: width 0.3s ease; }
+    #htmx-progress { position: fixed; top: 0; left: 0; height: 3px; background: var(--color-primary); z-index: 9999; transition: width 0.3s ease; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/dayjs@1/plugin/relativeTime.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.js"></script>
@@ -36,26 +35,32 @@
     </div>
     <div class="flex-none gap-2">
       {% if user.is_authenticated %}
+        <a href="{% url 'subscriptions:notifications' %}" class="btn btn-ghost btn-sm btn-circle">
+          <span class="indicator">
+            <i data-lucide="bell" class="w-4 h-4"></i>
+            {% if unread_notifications_count %}
+            <span class="badge badge-primary badge-xs indicator-item">{% if unread_notifications_count > 99 %}99+{% else %}{{ unread_notifications_count }}{% endif %}</span>
+            {% endif %}
+          </span>
+        </a>
         <div class="dropdown dropdown-end">
           <div tabindex="0" role="button" class="btn btn-ghost btn-sm gap-2">
-            <div class="avatar placeholder">
+            <div class="avatar avatar-placeholder">
               <div class="bg-neutral text-neutral-content w-8 rounded-full">
                 <span class="text-sm">{{ user.name|default:user.email|make_list|first|upper }}</span>
               </div>
             </div>
             <span class="hidden sm:inline">{{ user.name|default:user.email }}</span>
           </div>
+          <form id="navbar-logout-form" method="post" action="{% url 'account_logout' %}" class="hidden">
+            {% csrf_token %}
+          </form>
           <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-50 w-56 p-2 shadow-lg">
             <li class="menu-title px-4 py-2">
               <span class="text-xs text-base-content/50">{{ user.email }}</span>
             </li>
             <li><a href="{% url 'users:profile' %}">Profile</a></li>
-            <li>
-              <form method="post" action="{% url 'account_logout' %}">
-                {% csrf_token %}
-                <button type="submit" class="w-full text-left">Logout</button>
-              </form>
-            </li>
+            <li><button type="submit" form="navbar-logout-form">Logout</button></li>
           </ul>
         </div>
       {% else %}
@@ -261,7 +266,8 @@
         if (el._tinymceInit) return;
         el._tinymceInit = true;
         var uploadUrl = el.dataset.uploadUrl || '';
-        tinymce.init({
+        var hasUpload = Boolean(uploadUrl);
+        var config = {
           target: el,
           height: 200,
           menubar: false,
@@ -270,30 +276,13 @@
             '{% static "tinymce/skins/content/default/content.min.css" %}',
             'https://cdn.jsdelivr.net/npm/prismjs@1/themes/prism.min.css'
           ],
-          plugins: 'autolink lists link image code codesample table',
-          toolbar: 'bold italic underline strikethrough | bullist numlist | blockquote codesample code | link image table | math | removeformat',
+          plugins: hasUpload ? 'autolink lists link image code codesample table' : 'autolink lists link code codesample table',
+          toolbar: hasUpload
+            ? 'bold italic underline strikethrough | bullist numlist | blockquote codesample code | link image table | math | removeformat'
+            : 'bold italic underline strikethrough | bullist numlist | blockquote codesample code | link table | math | removeformat',
           branding: false,
           promotion: false,
           license_key: 'gpl',
-          images_upload_url: uploadUrl,
-          images_upload_handler: function(blobInfo) {
-            return new Promise(function(resolve, reject) {
-              if (!uploadUrl) { reject('No upload URL configured'); return; }
-              var form = new FormData();
-              form.append('file', blobInfo.blob(), blobInfo.filename());
-              fetch(uploadUrl, {
-                method: 'POST',
-                body: form,
-                headers: { 'X-CSRFToken': '{{ csrf_token }}' }
-              })
-              .then(function(r) { return r.json(); })
-              .then(function(data) {
-                if (data.location) resolve(data.location);
-                else reject(data.error || 'Upload failed');
-              })
-              .catch(function() { reject('Upload failed'); });
-            });
-          },
           setup: function(editor) {
             editor.on('change', function() { editor.save(); });
             // Math button: inserts LaTeX (rendered by KaTeX on display)
@@ -347,7 +336,28 @@
               }
             });
           }
-        });
+        };
+        if (hasUpload) {
+          config.images_upload_url = uploadUrl;
+          config.images_upload_handler = function(blobInfo) {
+            return new Promise(function(resolve, reject) {
+              var form = new FormData();
+              form.append('file', blobInfo.blob(), blobInfo.filename());
+              fetch(uploadUrl, {
+                method: 'POST',
+                body: form,
+                headers: { 'X-CSRFToken': '{{ csrf_token }}' }
+              })
+              .then(function(r) { return r.json(); })
+              .then(function(data) {
+                if (data.location) resolve(data.location);
+                else reject(data.error || 'Upload failed');
+              })
+              .catch(function() { reject('Upload failed'); });
+            });
+          };
+        }
+        tinymce.init(config);
       });
     }
     initTinyMCE();

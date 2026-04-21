@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid as uuid_mod
+from functools import partial
 
 from django.db import models, transaction
 from django.db.models import Case, F, Max, Q, Value, When
@@ -10,6 +11,7 @@ from django.utils.html import strip_tags
 from django.utils.text import Truncator
 
 from apps.nodes.models import Node, PostRevision
+from apps.nodes.signals import discussion_posted, discussion_status_changed, nodes_soft_deleted
 from apps.spaces.models import Space
 from apps.users.models import User
 
@@ -37,6 +39,35 @@ def _next_sequence_index(parent: Node) -> int:
     return result
 
 
+def _touch_space(space_id: uuid_mod.UUID) -> None:
+    Space.objects.filter(pk=space_id).update(updated_at=timezone.now())
+
+
+def _send_discussion_posted(*, discussion_id: uuid_mod.UUID, post_id: uuid_mod.UUID, actor_id: uuid_mod.UUID) -> None:
+    discussion_posted.send(
+        sender=Node,
+        discussion_id=discussion_id,
+        post_id=post_id,
+        actor_id=actor_id,
+    )
+
+
+def _send_discussion_status_changed(
+    *,
+    discussion_id: uuid_mod.UUID,
+    actor_id: uuid_mod.UUID,
+    event_type: str,
+    resolution_type: str,
+) -> None:
+    discussion_status_changed.send(
+        sender=Node,
+        discussion_id=discussion_id,
+        actor_id=actor_id,
+        event_type=event_type,
+        resolution_type=resolution_type,
+    )
+
+
 def create_child_discussion(
     *,
     parent: Node,
@@ -52,6 +83,7 @@ def create_child_discussion(
             sequence_index=seq,
         )
         _adjust_child_count(parent.pk, 1)
+        _touch_space(space.pk)
     return child
 
 
@@ -60,6 +92,7 @@ def create_post(
     discussion: Node,
     author: User,
     content: str,
+    is_draft: bool = False,
     reopens_discussion: bool = False,
 ) -> Node:
     if not discussion.space.is_active:
@@ -73,10 +106,16 @@ def create_post(
             node_type=Node.NodeType.POST,
             author=author,
             content=content,
+            is_draft=is_draft,
             reopens_discussion=reopens_discussion,
             sequence_index=seq,
         )
         _adjust_child_count(discussion.pk, 1)
+        _touch_space(discussion.space_id)
+        if not is_draft:
+            transaction.on_commit(
+                partial(_send_discussion_posted, discussion_id=discussion.pk, post_id=post.pk, actor_id=author.pk)
+            )
     return post
 
 
@@ -90,6 +129,7 @@ def _set_resolution(
     discussion.resolved_by = resolved_by
     discussion.resolved_at = timezone.now() if resolution_type else None
     discussion.save(update_fields=["resolution_type", "resolved_by", "resolved_at"])
+    _touch_space(discussion.space_id)
     return discussion
 
 
@@ -99,27 +139,85 @@ def resolve_discussion(
     resolution_type: str,
     resolved_by: User,
 ) -> Node:
-    return _set_resolution(discussion=discussion, resolution_type=resolution_type, resolved_by=resolved_by)
+    resolved = _set_resolution(discussion=discussion, resolution_type=resolution_type, resolved_by=resolved_by)
+    transaction.on_commit(
+        partial(
+            _send_discussion_status_changed,
+            discussion_id=discussion.pk,
+            actor_id=resolved_by.pk,
+            event_type="resolved",
+            resolution_type=resolution_type,
+        )
+    )
+    return resolved
 
 
-def reopen_discussion(*, discussion: Node) -> Node:
-    return _set_resolution(discussion=discussion)
+def reopen_discussion(*, discussion: Node, actor: User | None = None) -> Node:
+    reopened = _set_resolution(discussion=discussion)
+    if actor is not None:
+        transaction.on_commit(
+            partial(
+                _send_discussion_status_changed,
+                discussion_id=discussion.pk,
+                actor_id=actor.pk,
+                event_type="reopened",
+                resolution_type="",
+            )
+        )
+    return reopened
 
 
-def update_post(*, post: Node, content: str) -> Node:
+def update_post(
+    *,
+    post: Node,
+    content: str,
+    is_draft: bool | None = None,
+    reopens_discussion: bool | None = None,
+    actor: User | None = None,
+) -> Node:
+    target_is_draft = post.is_draft if is_draft is None else is_draft
+    if not post.is_draft and target_is_draft:
+        raise ValueError("Published posts cannot be converted back to drafts")
+
+    published_from_draft = post.is_draft and not target_is_draft
+    actor_user = actor or post.author
+
     with transaction.atomic():
-        PostRevision.objects.create(post=post, content=post.content)
+        update_fields: set[str] = {"content"}
+
+        if post.is_draft:
+            parent = post.get_parent()
+            if parent is None:
+                raise ValueError("Draft posts must belong to a discussion")
+            if not target_is_draft:
+                post.is_draft = False
+                post.created_at = timezone.now()
+                post.sequence_index = _next_sequence_index(parent)
+                update_fields.update({"is_draft", "created_at", "sequence_index"})
+            post.updated_at = None
+            update_fields.add("updated_at")
+        else:
+            PostRevision.objects.create(post=post, content=post.content)
+            post.updated_at = timezone.now()
+            update_fields.add("updated_at")
+
         post.content = content
-        post.updated_at = timezone.now()
-        post.save(update_fields=["content", "updated_at"])
+        if reopens_discussion is not None:
+            post.reopens_discussion = reopens_discussion
+            update_fields.add("reopens_discussion")
+        post.save(update_fields=list(update_fields))
+        _touch_space(post.space_id)
+        if published_from_draft and actor_user is not None:
+            parent = post.get_parent()
+            if parent is not None:
+                transaction.on_commit(
+                    partial(_send_discussion_posted, discussion_id=parent.pk, post_id=post.pk, actor_id=actor_user.pk)
+                )
     return post
 
 
 def soft_delete_node(*, node: Node) -> Node:
     """Soft-delete a node and all its descendants."""
-    from apps.opinions.models import Opinion, Reaction
-    from apps.subscriptions.models import Subscription
-
     now = timezone.now()
     with transaction.atomic():
         parent = node.get_parent()
@@ -128,11 +226,10 @@ def soft_delete_node(*, node: Node) -> Node:
         Node.objects.filter(pk__in=descendant_ids).update(deleted_at=now)
         node.deleted_at = now
         node.save(update_fields=["deleted_at"])
-        Subscription.objects.filter(node_id__in=all_ids).delete()
-        Opinion.objects.filter(node_id__in=all_ids).delete()
-        Reaction.objects.filter(post_id__in=all_ids).delete()
         if parent:
             _adjust_child_count(parent.pk, -1)
+        nodes_soft_deleted.send(sender=Node, node_ids=all_ids)
+        _touch_space(node.space_id)
     return node
 
 
@@ -194,12 +291,15 @@ def move_post(*, post: Node, target_discussion: Node, position: int = -1) -> Nod
                 _adjust_child_count(old_parent.pk, -1)
             _adjust_child_count(target_discussion.pk, 1)
 
+        _touch_space(target_discussion.space_id)
+
     return post
 
 
 def update_discussion(*, discussion: Node, label: str) -> Node:
     discussion.label = label
     discussion.save(update_fields=["label"])
+    _touch_space(discussion.space_id)
     return discussion
 
 
@@ -216,12 +316,19 @@ def move_discussion(*, discussion: Node, new_parent: Node) -> None:
         if old_parent:
             _adjust_child_count(old_parent.pk, -1)
         _adjust_child_count(new_parent.pk, 1)
+        _touch_space(discussion.space_id)
 
 
 def reorder_children(*, node_ids: list[str]) -> None:
+    if not node_ids:
+        return
+
     with transaction.atomic():
+        space_id = Node.objects.values_list("space_id", flat=True).filter(pk=node_ids[0]).first()
         cases = [When(pk=node_id, then=Value(i)) for i, node_id in enumerate(node_ids)]
         Node.objects.filter(pk__in=node_ids).update(sequence_index=Case(*cases, output_field=models.IntegerField()))
+        if space_id is not None:
+            _touch_space(space_id)
 
 
 def get_ordered_discussions(root: Node) -> list[Node]:
@@ -291,16 +398,11 @@ def merge_discussions(*, source: Node, target: Node) -> Node:
         source.child_count = 0
         source.save(update_fields=["deleted_at", "child_count"])
 
-        # Clean up subscriptions and opinions on the soft-deleted source
-        from apps.opinions.models import Opinion
-        from apps.subscriptions.models import Subscription
-
-        Subscription.objects.filter(node=source).delete()
-        Opinion.objects.filter(node=source).delete()
-
         source_parent = source.get_parent()
         if source_parent:
             _adjust_child_count(source_parent.pk, -1)
+        nodes_soft_deleted.send(sender=Node, node_ids=[source.pk])
+        _touch_space(source.space_id)
 
     return target
 
@@ -352,6 +454,8 @@ def split_discussion(*, discussion: Node, child_ids: list[str]) -> Node:
                 )
             )
 
+        _touch_space(discussion.space_id)
+
     return new_discussion
 
 
@@ -392,6 +496,8 @@ def promote_post(*, post: Node) -> tuple[Node, Node]:
         # Update parent child count
         _recount_children(parent.pk)
 
+        _touch_space(post.space_id)
+
     return new_discussion, link
 
 
@@ -402,6 +508,7 @@ def get_link_previews(children: list[Node]) -> dict[uuid_mod.UUID, Node]:
         return {}
 
     target_nodes = list(Node.objects.filter(pk__in=link_target_ids))
+    target_by_path = {target.path: target.pk for target in target_nodes}
     child_q = Q()
     for tn in target_nodes:
         child_q |= Q(path__startswith=tn.path, depth=tn.depth + 1)
@@ -416,9 +523,9 @@ def get_link_previews(children: list[Node]) -> dict[uuid_mod.UUID, Node]:
         .order_by("path", "sequence_index", "created_at")
     ):
         parent_path = post.path[: len(post.path) - post.steplen]
-        parent_node = next((tn for tn in target_nodes if tn.path == parent_path), None)
-        if parent_node and parent_node.pk not in first_posts:
-            first_posts[parent_node.pk] = post
+        parent_id = target_by_path.get(parent_path)
+        if parent_id is not None and parent_id not in first_posts:
+            first_posts[parent_id] = post
     return first_posts
 
 

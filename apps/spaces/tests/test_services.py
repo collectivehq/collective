@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import pytest
+from django.http import Http404
 
 from apps.spaces import services as space_services
 from apps.spaces.models import Role, Space, SpaceParticipant
+from apps.spaces.tests.factories import SpaceFactory
 from apps.users.tests.factories import UserFactory
 
 
@@ -23,6 +25,9 @@ class TestCreateSpace:
         assert roles.count() == 3
         labels = set(roles.values_list("label", flat=True))
         assert labels == {"Facilitator", "Member", "Observer"}
+        assert roles.get(label="Facilitator").can_view_drafts is True
+        assert roles.get(label="Member").can_view_drafts is False
+        assert roles.get(label="Observer").can_view_drafts is False
 
     def test_creates_facilitator_participant(self):
         user = UserFactory()
@@ -49,6 +54,12 @@ class TestCreateSpace:
             title="Test", created_by=user, opinion_types=["agree", "abstain", "disagree"]
         )
         assert space.opinion_types == ["agree", "abstain", "disagree"]
+
+    def test_creates_space_with_information(self):
+        user = UserFactory()
+        space = space_services.create_space(title="Test", created_by=user, information="<p>Welcome</p>")
+
+        assert space.information == "<p>Welcome</p>"
 
 
 @pytest.mark.django_db
@@ -210,8 +221,12 @@ class TestUpdateRoleService:
         user = UserFactory()
         space = space_services.create_space(title="Test", created_by=user)
         role = space_services.create_role(space=space, label="Reviewer")
-        updated = space_services.update_role(role=role, permissions={"can_post": True, "can_resolve": True})
+        updated = space_services.update_role(
+            role=role,
+            permissions={"can_post": True, "can_resolve": True, "can_view_drafts": True},
+        )
         assert updated.can_post is True
+        assert updated.can_view_drafts is True
         assert updated.can_resolve is True
 
     def test_cannot_remove_last_admin_permission(self):
@@ -259,3 +274,33 @@ class TestSetDefaultRole:
         space_services.set_default_role(space=space, role=observer_role)
         space.refresh_from_db()
         assert space.default_role == observer_role
+
+
+@pytest.mark.django_db
+class TestGetActiveSpace:
+    def test_returns_active_space(self):
+        user = UserFactory()
+        space = space_services.create_space(title="Test", created_by=user)
+        space_services.open_space(space=space)
+
+        result = space_services.get_active_space(str(space.pk))
+
+        assert result.pk == space.pk
+
+    def test_raises_404_for_inactive_space(self):
+        user = UserFactory()
+        space = space_services.create_space(title="Test", created_by=user)
+
+        with pytest.raises(Http404, match="no longer active"):
+            space_services.get_active_space(str(space.pk))
+
+
+@pytest.mark.django_db
+class TestSpaceFactory:
+    def test_creates_root_roles_and_facilitator_participant(self):
+        space = SpaceFactory()
+
+        assert space.root_discussion is not None
+        assert space.default_role is not None
+        assert Role.objects.filter(space=space).count() == 3
+        assert SpaceParticipant.objects.filter(space=space, user=space.created_by, role__label="Facilitator").exists()

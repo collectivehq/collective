@@ -3,6 +3,7 @@ from __future__ import annotations
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
+from django.db import transaction
 from django.db.models import Count, Q, QuerySet
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -10,7 +11,9 @@ from django.views.decorators.http import require_POST
 
 from apps.nodes.models import Node
 from apps.spaces import services as space_services
+from apps.spaces.docx_import import DocxImportError, import_space_from_docx
 from apps.spaces.forms import SpaceCreateForm, SpaceSettingsForm
+from apps.spaces.markdown_import import MarkdownImportError, import_space_from_markdown
 from apps.spaces.models import Role, Space, SpaceInvite, SpaceParticipant
 from apps.spaces.permissions import can_view_space
 from apps.users.models import User
@@ -43,6 +46,7 @@ def space_list(request: HttpRequest) -> HttpResponse:
                 deleted_at__isnull=True,
             )
             .select_related("root_discussion", "default_role")
+            .order_by("-updated_at", "-created_at")
             .distinct()
         )
         open_spaces = (
@@ -51,6 +55,7 @@ def space_list(request: HttpRequest) -> HttpResponse:
                 deleted_at__isnull=True,
             )
             .select_related("root_discussion", "default_role")
+            .order_by("-updated_at", "-created_at")
             .exclude(pk__in=participating)
         )
     else:
@@ -58,7 +63,7 @@ def space_list(request: HttpRequest) -> HttpResponse:
         open_spaces = Space.objects.filter(
             lifecycle=Space.Lifecycle.OPEN,
             deleted_at__isnull=True,
-        )
+        ).order_by("-updated_at", "-created_at")
 
     return render(
         request,
@@ -74,16 +79,31 @@ def space_list(request: HttpRequest) -> HttpResponse:
 def space_create(request: HttpRequest) -> HttpResponse:
     user = get_user(request)
     if request.method == "POST":
-        form = SpaceCreateForm(request.POST)
+        form = SpaceCreateForm(request.POST, request.FILES)
         if form.is_valid():
-            space = space_services.create_space(
-                title=form.cleaned_data["title"],
-                description=form.cleaned_data["description"],
-                created_by=user,
-            )
-            space_services.open_space(space=space)
-            messages.success(request, f'Space "{space.title}" created.')
-            return redirect("spaces:detail", space_id=space.pk)
+            source_docx = form.cleaned_data["source_docx"]
+            source_markdown = form.cleaned_data["source_markdown"]
+            docx_bytes = source_docx.read() if source_docx is not None else None
+            markdown_bytes = source_markdown.read() if source_markdown is not None else None
+            error_field = "source_docx" if docx_bytes is not None else "source_markdown"
+            try:
+                with transaction.atomic():
+                    space = space_services.create_space(
+                        title=form.cleaned_data["title"],
+                        description=form.cleaned_data["description"],
+                        information=form.cleaned_data["information"],
+                        created_by=user,
+                    )
+                    space_services.open_space(space=space)
+                    if docx_bytes is not None:
+                        import_space_from_docx(space=space, author=user, docx_bytes=docx_bytes)
+                    if markdown_bytes is not None:
+                        import_space_from_markdown(space=space, author=user, markdown_bytes=markdown_bytes)
+            except (DocxImportError, MarkdownImportError) as exc:
+                form.add_error(error_field, str(exc))
+            else:
+                messages.success(request, f'Space "{space.title}" created.')
+                return redirect("spaces:detail", space_id=space.pk)
     else:
         form = SpaceCreateForm()
     return render(request, "spaces/space_create.html", {"form": form})
@@ -233,6 +253,7 @@ def participant_role_update(request: HttpRequest, space_id: str, participant_id:
 
 PERMISSION_LABELS: dict[str, str] = {
     "can_post": "Post messages",
+    "can_view_drafts": "View draft posts",
     "can_opine": "Express opinions",
     "can_react": "React to posts",
     "can_shape_tree": "Shape discussion tree",

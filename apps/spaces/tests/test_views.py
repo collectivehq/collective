@@ -4,6 +4,7 @@ import pytest
 from django.test import Client
 from django.urls import reverse
 
+from apps.nodes import services as node_services
 from apps.spaces import services as space_services
 from apps.spaces.models import Space
 from apps.users.tests.factories import UserFactory
@@ -49,6 +50,23 @@ class TestSpaceListView:
         response = c.get(reverse("spaces:list"))
         assert space.title.encode() in response.content
 
+    def test_orders_spaces_by_updated_at(self):
+        creator = UserFactory()
+        c = Client()
+        c.force_login(creator)
+
+        older = space_services.create_space(title="Older Space", created_by=creator)
+        space_services.open_space(space=older)
+        newer = space_services.create_space(title="Newer Space", created_by=creator)
+        space_services.open_space(space=newer)
+
+        node_services.create_post(discussion=older.root_discussion, author=creator, content="Recent activity")
+
+        response = c.get(reverse("spaces:list"))
+        html = response.content.decode()
+
+        assert html.index("Older Space") < html.index("Newer Space")
+
 
 @pytest.mark.django_db
 class TestSpaceCreateView:
@@ -57,11 +75,29 @@ class TestSpaceCreateView:
         response = c.get(reverse("spaces:create"))
         assert response.status_code == 200
 
+    def test_get_form_shows_example_import_links(self, auth_client):
+        c, user = auth_client
+        response = c.get(reverse("spaces:create"))
+
+        assert response.status_code == 200
+        assert b"Download DOCX example" in response.content
+        assert b"Download Markdown example" in response.content
+
     def test_create_space(self, auth_client):
         c, user = auth_client
         response = c.post(reverse("spaces:create"), {"title": "New Space", "description": "Desc"})
         assert response.status_code == 302
         assert Space.objects.filter(title="New Space").exists()
+
+    def test_create_space_with_information(self, auth_client):
+        c, user = auth_client
+        response = c.post(
+            reverse("spaces:create"),
+            {"title": "Rich Space", "description": "Desc", "information": "<p>Welcome</p>"},
+        )
+
+        assert response.status_code == 302
+        assert Space.objects.get(title="Rich Space").information == "<p>Welcome</p>"
 
     def test_requires_login(self, client):
         response = client.get(reverse("spaces:create"))
@@ -75,6 +111,18 @@ class TestSpaceDetailView:
         c, creator, space = open_space_with_client
         response = c.get(reverse("spaces:detail", kwargs={"space_id": space.pk}))
         assert response.status_code == 200
+
+    def test_renders_information_and_modal_autoload(self, open_space_with_client):
+        c, _, space = open_space_with_client
+        space.information = "<p>Welcome</p><script>alert(1)</script>"
+        space.save(update_fields=["information"])
+
+        response = c.get(reverse("spaces:detail", kwargs={"space_id": space.pk}))
+
+        assert response.status_code == 200
+        assert b"aboutSpaceModal" in response.content
+        assert b"showModal" in response.content
+        assert b"Welcome" in response.content
 
     def test_non_participant_redirected_to_join(self, open_space_with_client):
         _, _, space = open_space_with_client
@@ -122,6 +170,17 @@ class TestSpaceSettingsView:
         c, _, space = open_space_with_client
         response = c.get(reverse("spaces:settings", kwargs={"space_id": space.pk}))
         assert response.status_code == 200
+
+    def test_settings_uses_filter_reset_buttons_and_full_width_range(self, open_space_with_client):
+        c, _, space = open_space_with_client
+
+        response = c.get(reverse("spaces:settings", kwargs={"space_id": space.pk}))
+
+        assert response.status_code == 200
+        assert b'aria-label="Reset Opinion types"' in response.content
+        assert b'aria-label="Reset Reaction types"' in response.content
+        assert b'id="edit-window-range"' in response.content
+        assert b"range range-sm range-primary w-full" in response.content
 
     def test_participant_denied(self, open_space_with_client):
         _, _, space = open_space_with_client

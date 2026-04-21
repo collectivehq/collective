@@ -2,7 +2,7 @@
 name = "collective"
 version = "0.1.0"
 description = "A structured collective dialogue platform"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "Django>=6.0,<7.0",
     "psycopg[binary]>=3.3",
@@ -13,7 +13,9 @@ dependencies = [
     "python-dotenv>=1.2",
     "django-tinymce>=5.0",
     "nh3>=0.3",
+    "Markdown>=3.10",
     "filetype>=1.2",
+    "python-docx>=1.2",
 ]
 
 [tool.setuptools.packages.find]
@@ -30,7 +32,7 @@ dev = [
 ]
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py312"
 line-length = 120
 src = ["collective"]
 extend-exclude = ["*/migrations/*"]
@@ -39,7 +41,7 @@ extend-exclude = ["*/migrations/*"]
 select = ["E", "F", "I", "N", "W", "UP", "B", "A", "DJ"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 plugins = ["mypy_django_plugin.main"]
 strict = true
 warn_return_any = true

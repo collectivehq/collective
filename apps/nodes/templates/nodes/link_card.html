@@ -40,7 +40,7 @@
             {% endif %}
             {% if can_reorganise and all_discussions %}
             <li>
-              <button @click="document.getElementById('moveDialog-{{ link.pk }}').showModal(); $el.closest('.dropdown').querySelector('[tabindex]').blur()">
+              <button @click="document.getElementById('moveDialog-{{ link.pk }}').showModal(); lucide.createIcons({ node: document.getElementById('moveDialog-{{ link.pk }}') }); $el.closest('.dropdown').querySelector('[tabindex]').blur()">
                 <i data-lucide="move" class="w-3 h-3"></i> Move
               </button>
             </li>

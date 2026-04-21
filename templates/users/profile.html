@@ -11,18 +11,18 @@
       <h2 class="card-title text-lg">Account</h2>
       <form method="post" class="space-y-4">
         {% csrf_token %}
-        <div class="form-control">
-          <label class="label" for="id_name"><span class="label-text">Display Name</span></label>
+        <div class="space-y-1">
+          <label class="label" for="id_name"><span>Display Name</span></label>
           {{ form.name }}
           {% if form.name.errors %}
             <p class="text-error text-sm mt-1">{{ form.name.errors.0 }}</p>
           {% endif %}
         </div>
 
-        <div class="form-control">
-          <label class="label"><span class="label-text">Email</span></label>
+        <div class="space-y-1">
+          <label class="label"><span>Email</span></label>
           <div class="flex items-center gap-2">
-            <input type="text" value="{{ user.email }}" class="input input-bordered w-full" disabled />
+            <input type="text" value="{{ user.email }}" class="input w-full" disabled />
             <a href="{% url 'account_email' %}" class="btn btn-outline btn-sm">Change</a>
           </div>
         </div>

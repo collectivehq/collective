@@ -51,18 +51,18 @@ class TestRole:
 
     def test_str(self):
         space = SpaceFactory(title="Test")
-        role = RoleFactory(space=space, label="Facilitator")
+        role = space.roles.get(label="Facilitator")
         assert str(role) == "Facilitator (Test)"
 
     def test_unique_label_per_space(self):
         space = SpaceFactory()
-        RoleFactory(space=space, label="Facilitator")
         with pytest.raises(IntegrityError):
             RoleFactory(space=space, label="Facilitator")
 
     def test_default_permissions(self):
         role = RoleFactory()
         assert role.can_post is True
+        assert role.can_view_drafts is False
         assert role.can_shape_tree is False
         assert role.can_moderate is False
 

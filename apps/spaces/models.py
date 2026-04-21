@@ -37,6 +37,7 @@ class Space(models.Model):  # type: ignore[django-manager-missing]
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
+    information = models.TextField(blank=True)
     root_discussion = models.OneToOneField(
         "nodes.Node",
         on_delete=models.PROTECT,
@@ -62,8 +63,10 @@ class Space(models.Model):  # type: ignore[django-manager-missing]
         help_text='Subset of ["like", "dislike"]',
     )
     edit_window_minutes = models.PositiveIntegerField(
-        default=0,
-        help_text="Minutes after posting during which edits are allowed. 0 = editing disabled.",
+        null=True,
+        blank=True,
+        default=None,
+        help_text="Minutes after posting during which edits are allowed. None = no limit, 0 = disabled.",
     )
     default_role = models.ForeignKey(
         "spaces.Role",
@@ -75,11 +78,12 @@ class Space(models.Model):  # type: ignore[django-manager-missing]
     template_slug = models.CharField(max_length=100, blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="created_spaces")
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
     deleted_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "spaces"
-        ordering = ["-created_at"]
+        ordering = ["-updated_at", "-created_at"]
 
     def __str__(self) -> str:
         return self.title
@@ -107,6 +111,7 @@ class Role(models.Model):
     can_reorganise = models.BooleanField(default=False)
     can_moderate = models.BooleanField(default=False)
     can_close_space = models.BooleanField(default=False)
+    can_view_drafts = models.BooleanField(default=False)
     can_opine = models.BooleanField(default=True)
     can_react = models.BooleanField(default=True)
     is_default = models.BooleanField(default=False)

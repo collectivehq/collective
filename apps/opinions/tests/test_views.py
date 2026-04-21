@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import pytest
-from django.test import Client
+from django.core.cache import cache
+from django.test import Client, override_settings
 from django.urls import reverse
 
 from apps.nodes import services as node_services
@@ -63,6 +64,18 @@ class TestCastOpinionView:
         )
         assert response.status_code == 302
 
+    @override_settings(TOGGLE_RATE_LIMIT_MAX_ATTEMPTS=1, TOGGLE_RATE_LIMIT_WINDOW_SECONDS=60)
+    def test_rate_limits_toggle_opinion(self, participant_client):
+        cache.clear()
+        c, space, _, node = participant_client
+        url = reverse("opinions:toggle_opinion", kwargs={"space_id": space.pk, "node_id": node.pk})
+
+        first = c.post(url, {"type": "agree"})
+        second = c.post(url, {"type": "disagree"})
+
+        assert first.status_code == 200
+        assert second.status_code == 429
+
 
 @pytest.mark.django_db
 class TestToggleReactionView:
@@ -96,3 +109,16 @@ class TestToggleReactionView:
             {"type": "like"},
         )
         assert response.status_code == 302
+
+    @override_settings(TOGGLE_RATE_LIMIT_MAX_ATTEMPTS=1, TOGGLE_RATE_LIMIT_WINDOW_SECONDS=60)
+    def test_rate_limits_toggle_reaction(self, participant_client):
+        cache.clear()
+        c, space, participant, node = participant_client
+        post = node_services.create_post(discussion=node, author=participant.user, content="Test")
+        url = reverse("opinions:toggle_reaction", kwargs={"space_id": space.pk, "post_id": post.pk})
+
+        first = c.post(url, {"type": "like"})
+        second = c.post(url, {"type": "dislike"})
+
+        assert first.status_code == 200
+        assert second.status_code == 429

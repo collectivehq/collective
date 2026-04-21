@@ -1,34 +1,38 @@
-{% extends "base.html" %}
+{% extends "account/_base_card.html" %}
+{% load i18n %}
+
 {% block title %}Change Email — Collective{% endblock %}
 
-{% block content %}
-<div class="max-w-lg mx-auto">
-  <h1 class="text-2xl font-bold mb-6">Change Email</h1>
+{% block card_title %}{% trans "Change Email" %}{% endblock %}
 
-  <div class="mb-4">
-    <span class="text-sm text-base-content/70">Current email:</span>
-    <span class="font-mono">{% if current_emailaddress %}{{ current_emailaddress.email }}{% else %}{{ user.email }}{% endif %}</span>
-  </div>
+{% block card_content %}
+      <p class="text-center text-sm text-base-content/60 mb-4">
+        {% trans "Update your account email address and confirm the new address from your inbox." %}
+      </p>
 
-  {% if new_emailaddress %}
-    <div class="alert alert-info mb-4">
-      <span>Pending change to <strong>{{ new_emailaddress.email }}</strong> — check your inbox for a verification link.</span>
-    </div>
-  {% endif %}
+      <div class="rounded-box border border-base-300 bg-base-200/50 px-3 py-3 text-left mb-4">
+        <p class="text-xs font-medium uppercase tracking-wide text-base-content/50">{% trans "Current Email" %}</p>
+        <p class="font-mono text-sm break-all">{% if current_emailaddress %}{{ current_emailaddress.email }}{% else %}{{ user.email }}{% endif %}</p>
+      </div>
 
-  <form method="post" action="{% url 'account_email' %}" class="space-y-4">
-    {% csrf_token %}
-    <div class="form-control">
-      <label class="label" for="id_email"><span class="label-text">New email address</span></label>
-      <input type="email" name="email" id="id_email" class="input input-bordered w-full" placeholder="new@example.com" required {% if add_email_form.email.value %}value="{{ add_email_form.email.value }}"{% endif %} />
-    </div>
-    {% if add_email_form.email.errors %}
-      <p class="text-error text-sm">{{ add_email_form.email.errors.0 }}</p>
-    {% endif %}
-    <div class="flex gap-2">
-      <button type="submit" name="action_add" class="btn btn-primary btn-sm">Change Email</button>
-      <a href="{% url 'users:profile' %}" class="btn btn-ghost btn-sm">Cancel</a>
-    </div>
-  </form>
-</div>
+      {% if new_emailaddress %}
+        <div class="alert alert-info mb-4 text-left">
+          <span>{% blocktrans with email=new_emailaddress.email %}Pending change to {{ email }}. Check your inbox for a verification link.{% endblocktrans %}</span>
+        </div>
+      {% endif %}
+
+      <form method="post" action="{% url 'account_email' %}" class="space-y-3 text-left">
+        {% csrf_token %}
+        <div class="space-y-1">
+          <label class="label" for="id_email"><span>{% trans "New email address" %}</span></label>
+          <input type="email" name="email" id="id_email" class="input w-full" placeholder="new@example.com" required {% if add_email_form.email.value %}value="{{ add_email_form.email.value }}"{% endif %} />
+        </div>
+        {% if add_email_form.email.errors %}
+          <p class="text-error text-sm">{{ add_email_form.email.errors.0 }}</p>
+        {% endif %}
+        <div class="mt-4 space-y-2">
+          <button type="submit" name="action_add" class="btn btn-primary w-full">{% trans "Change Email" %}</button>
+          <a href="{% url 'users:profile' %}" class="btn btn-ghost w-full">{% trans "Cancel" %}</a>
+        </div>
+      </form>
 {% endblock %}

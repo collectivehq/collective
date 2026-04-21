@@ -86,6 +86,12 @@ class TestCreatePost:
         post = node_services.create_post(discussion=root, author=user, content="Reopen", reopens_discussion=True)
         assert post.reopens_discussion is True
 
+    def test_create_draft_post(self, open_space):
+        root = open_space.root_discussion
+        user = UserFactory()
+        post = node_services.create_post(discussion=root, author=user, content="Draft", is_draft=True)
+        assert post.is_draft is True
+
 
 @pytest.mark.django_db
 class TestResolveDiscussion:
@@ -120,6 +126,32 @@ class TestEditPost:
         assert PostRevision.objects.filter(post=post).count() == 1
         rev = PostRevision.objects.get(post=post)
         assert rev.content == "Original"
+
+    def test_editing_draft_does_not_create_revision(self, open_space):
+        root = open_space.root_discussion
+        user = UserFactory()
+        post = node_services.create_post(discussion=root, author=user, content="Original draft", is_draft=True)
+
+        node_services.update_post(post=post, content="Updated draft", is_draft=True)
+
+        post.refresh_from_db()
+        assert post.content == "Updated draft"
+        assert post.is_draft is True
+        assert post.updated_at is None
+        assert PostRevision.objects.filter(post=post).count() == 0
+
+    def test_publishing_draft_does_not_create_revision(self, open_space):
+        root = open_space.root_discussion
+        user = UserFactory()
+        post = node_services.create_post(discussion=root, author=user, content="Original draft", is_draft=True)
+
+        node_services.update_post(post=post, content="Published", is_draft=False)
+
+        post.refresh_from_db()
+        assert post.content == "Published"
+        assert post.is_draft is False
+        assert post.updated_at is None
+        assert PostRevision.objects.filter(post=post).count() == 0
 
 
 @pytest.mark.django_db
@@ -271,6 +303,20 @@ class TestMergeDiscussions:
         node_services.merge_discussions(source=source, target=target)
         root.refresh_from_db()
         assert root.child_count == 1
+
+    def test_merge_deletes_source_subscriptions_and_opinions(self, open_space):
+        root = open_space.root_discussion
+        participant = space_services.join_space(space=open_space, user=UserFactory())
+        source = node_services.create_child_discussion(parent=root, space=open_space, label="Source")
+        target = node_services.create_child_discussion(parent=root, space=open_space, label="Target")
+
+        Subscription.objects.create(participant=participant, node=source)
+        Opinion.objects.create(participant=participant, node=source, opinion_type="agree")
+
+        node_services.merge_discussions(source=source, target=target)
+
+        assert not Subscription.objects.filter(node=source).exists()
+        assert not Opinion.objects.filter(node=source).exists()
 
 
 @pytest.mark.django_db

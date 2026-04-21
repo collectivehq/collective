@@ -1,0 +1,277 @@
+{% extends "base.html" %}
+
+{% block title %}Collective — Structured Collective Dialogue{% endblock %}
+
+
+{% block content %}
+
+{# ── Navbar override — hide default navbar padding on hero #}
+
+{# ── Hero ──────────────────────────────────────────────────────────────── #}
+<section class="hero-gradient min-h-[90vh] flex flex-col items-center justify-center text-center px-4 py-24 -mx-4 -mt-6">
+  <div class="max-w-3xl mx-auto">
+    <div class="badge badge-outline badge-lg mb-6 gap-2 font-medium">
+      <span class="inline-block w-2 h-2 rounded-full bg-success animate-pulse"></span>
+      Now open for early access
+    </div>
+    <h1 class="text-5xl sm:text-6xl lg:text-7xl font-extrabold leading-tight mb-6">
+      Think together.<br>
+      <span class="gradient-text">Decide with clarity.</span>
+    </h1>
+    <p class="text-lg sm:text-xl text-base-content/60 max-w-xl mx-auto mb-10 leading-relaxed">
+      Collective is a structured dialogue platform that helps groups explore ideas,
+      surface disagreements, and reach real decisions — without the noise.
+    </p>
+    <div class="flex flex-wrap justify-center gap-3">
+      <a href="{% url 'account_signup' %}" class="btn btn-primary btn-lg shadow-lg">
+        Get started free
+        <i data-lucide="arrow-right" class="w-4 h-4"></i>
+      </a>
+      <a href="{% url 'account_login' %}" class="btn btn-ghost btn-lg">
+        Sign in
+      </a>
+    </div>
+  </div>
+</section>
+
+{# ── Social proof / stats ──────────────────────────────────────────────── #}
+<div class="stats stats-vertical sm:stats-horizontal bg-base-100 shadow w-full">
+    <div class="stat place-items-center">
+    <div class="stat-figure text-primary">
+        <i data-lucide="git-branch" class="w-8 h-8"></i>
+    </div>
+    <div class="stat-title">Discussions</div>
+    <div class="stat-value text-primary">Tree-based</div>
+    <div class="stat-desc">Structured, not scattered</div>
+    </div>
+    <div class="stat place-items-center">
+    <div class="stat-figure text-secondary">
+        <i data-lucide="shield" class="w-8 h-8"></i>
+    </div>
+    <div class="stat-title">Roles</div>
+    <div class="stat-value text-secondary">Fine-grained</div>
+    <div class="stat-desc">Facilitators, members, observers</div>
+    </div>
+    <div class="stat place-items-center">
+    <div class="stat-figure text-accent">
+        <i data-lucide="check-circle-2" class="w-8 h-8"></i>
+    </div>
+    <div class="stat-title">Outcomes</div>
+    <div class="stat-value text-accent">Tracked</div>
+    <div class="stat-desc">Accept, reject, or close</div>
+    </div>
+</div>
+
+{# ── Features ──────────────────────────────────────────────────────────── #}
+<section class="py-24 px-4">
+  <div class="max-w-5xl mx-auto">
+    <div class="text-center mb-16">
+      <h2 class="text-3xl sm:text-4xl font-bold mb-3">Everything your group needs</h2>
+      <p class="text-base-content/50 text-lg">One platform, from first idea to final decision.</p>
+    </div>
+    <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+
+      <div class="card bg-base-100 shadow-sm border border-base-200 feature-card">
+        <div class="card-body gap-4">
+          <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+            <i data-lucide="git-branch" class="w-5 h-5 text-primary"></i>
+          </div>
+          <div>
+            <h3 class="card-title text-base mb-1">Structured discussions</h3>
+            <p class="text-sm text-base-content/60 leading-relaxed">
+              Organise conversations in a tree of topics and sub-topics so nothing gets lost in a flat chat.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="card bg-base-100 shadow-sm border border-base-200 feature-card">
+        <div class="card-body gap-4">
+          <div class="w-10 h-10 rounded-xl bg-secondary/10 flex items-center justify-center">
+            <i data-lucide="thumbs-up" class="w-5 h-5 text-secondary"></i>
+          </div>
+          <div>
+            <h3 class="card-title text-base mb-1">Opinions &amp; reactions</h3>
+            <p class="text-sm text-base-content/60 leading-relaxed">
+              Agree, disagree, or abstain on any discussion. React to individual posts with likes and dislikes.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="card bg-base-100 shadow-sm border border-base-200 feature-card">
+        <div class="card-body gap-4">
+          <div class="w-10 h-10 rounded-xl bg-success/10 flex items-center justify-center">
+            <i data-lucide="check-circle-2" class="w-5 h-5 text-success"></i>
+          </div>
+          <div>
+            <h3 class="card-title text-base mb-1">Resolution tracking</h3>
+            <p class="text-sm text-base-content/60 leading-relaxed">
+              Accept, reject, or close discussions to capture outcomes and keep the group moving forward.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="card bg-base-100 shadow-sm border border-base-200 feature-card">
+        <div class="card-body gap-4">
+          <div class="w-10 h-10 rounded-xl bg-warning/10 flex items-center justify-center">
+            <i data-lucide="bell" class="w-5 h-5 text-warning"></i>
+          </div>
+          <div>
+            <h3 class="card-title text-base mb-1">Subscriptions &amp; notifications</h3>
+            <p class="text-sm text-base-content/60 leading-relaxed">
+              Subscribe to the topics you care about and get notified when something new happens.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="card bg-base-100 shadow-sm border border-base-200 feature-card">
+        <div class="card-body gap-4">
+          <div class="w-10 h-10 rounded-xl bg-error/10 flex items-center justify-center">
+            <i data-lucide="shield" class="w-5 h-5 text-error"></i>
+          </div>
+          <div>
+            <h3 class="card-title text-base mb-1">Flexible roles &amp; permissions</h3>
+            <p class="text-sm text-base-content/60 leading-relaxed">
+              Define facilitators, members, and observers with fine-grained permissions tailored to your group.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="card bg-base-100 shadow-sm border border-base-200 feature-card">
+        <div class="card-body gap-4">
+          <div class="w-10 h-10 rounded-xl bg-info/10 flex items-center justify-center">
+            <i data-lucide="upload" class="w-5 h-5 text-info"></i>
+          </div>
+          <div>
+            <h3 class="card-title text-base mb-1">Import from DOCX &amp; Markdown</h3>
+            <p class="text-sm text-base-content/60 leading-relaxed">
+              Seed a space instantly from a structured document — great for workshops and pre-planned agendas.
+            </p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+{# ── How it works ──────────────────────────────────────────────────────── #}
+<section class="py-24 -mx-4 bg-base-100">
+  <div class="max-w-5xl mx-auto px-4">
+    <div class="text-center mb-16">
+      <h2 class="text-3xl sm:text-4xl font-bold mb-3">How it works</h2>
+      <p class="text-base-content/50 text-lg">Up and running in minutes.</p>
+    </div>
+
+    <div class="grid gap-8 md:grid-cols-3">
+      <div class="flex flex-col items-center text-center gap-4">
+        <div class="w-14 h-14 rounded-2xl bg-primary flex items-center justify-center shadow-lg shadow-primary/30">
+          <i data-lucide="plus-circle" class="w-7 h-7 text-primary-content"></i>
+        </div>
+        <div class="badge badge-primary badge-sm">Step 1</div>
+        <div>
+          <h3 class="font-bold text-lg mb-2">Create a space</h3>
+          <p class="text-sm text-base-content/60 leading-relaxed">
+            Give your group a home. Configure roles and invite participants via a shareable link.
+          </p>
+        </div>
+      </div>
+
+      <div class="flex flex-col items-center text-center gap-4">
+        <div class="w-14 h-14 rounded-2xl bg-secondary flex items-center justify-center shadow-lg shadow-secondary/30">
+          <i data-lucide="git-branch" class="w-7 h-7 text-secondary-content"></i>
+        </div>
+        <div class="badge badge-secondary badge-sm">Step 2</div>
+        <div>
+          <h3 class="font-bold text-lg mb-2">Build the discussion tree</h3>
+          <p class="text-sm text-base-content/60 leading-relaxed">
+            Facilitators shape a hierarchy of topics. Participants post, react, and express opinions.
+          </p>
+        </div>
+      </div>
+
+      <div class="flex flex-col items-center text-center gap-4">
+        <div class="w-14 h-14 rounded-2xl bg-success flex items-center justify-center shadow-lg shadow-success/30">
+          <i data-lucide="check-circle-2" class="w-7 h-7 text-success-content"></i>
+        </div>
+        <div class="badge badge-success badge-sm">Step 3</div>
+        <div>
+          <h3 class="font-bold text-lg mb-2">Resolve &amp; archive</h3>
+          <p class="text-sm text-base-content/60 leading-relaxed">
+            Mark discussions as accepted, rejected, or closed. The record stays forever.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+{# ── Use cases ─────────────────────────────────────────────────────────── #}
+<section class="py-24 px-4">
+  <div class="max-w-5xl mx-auto">
+    <div class="text-center mb-16">
+      <h2 class="text-3xl sm:text-4xl font-bold mb-3">Built for every group</h2>
+      <p class="text-base-content/50 text-lg">From intimate teams to large communities.</p>
+    </div>
+
+    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div class="card bg-base-100 border border-base-200 text-center">
+        <div class="card-body gap-3 items-center py-6">
+          <i data-lucide="building-2" class="w-8 h-8 text-primary"></i>
+          <h3 class="font-semibold">Organisations</h3>
+          <p class="text-xs text-base-content/50">Strategic planning and policy review</p>
+        </div>
+      </div>
+      <div class="card bg-base-100 border border-base-200 text-center">
+        <div class="card-body gap-3 items-center py-6">
+          <i data-lucide="graduation-cap" class="w-8 h-8 text-secondary"></i>
+          <h3 class="font-semibold">Academia</h3>
+          <p class="text-xs text-base-content/50">Research discussions and peer review</p>
+        </div>
+      </div>
+      <div class="card bg-base-100 border border-base-200 text-center">
+        <div class="card-body gap-3 items-center py-6">
+          <i data-lucide="users" class="w-8 h-8 text-success"></i>
+          <h3 class="font-semibold">Communities</h3>
+          <p class="text-xs text-base-content/50">Open forums and public consultations</p>
+        </div>
+      </div>
+      <div class="card bg-base-100 border border-base-200 text-center">
+        <div class="card-body gap-3 items-center py-6">
+          <i data-lucide="code-2" class="w-8 h-8 text-warning"></i>
+          <h3 class="font-semibold">Teams</h3>
+          <p class="text-xs text-base-content/50">Engineering RFCs and design decisions</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+{# ── CTA ───────────────────────────────────────────────────────────────── #}
+<section class="py-24 -mx-4 bg-base-100">
+  <div class="max-w-2xl mx-auto px-4 text-center">
+    <h2 class="text-3xl sm:text-4xl font-bold mb-4">Ready to bring clarity to your group?</h2>
+    <p class="text-base-content/60 text-lg mb-10 leading-relaxed">
+      Start a space in under a minute.
+    </p>
+    <a href="{% url 'account_signup' %}" class="btn btn-primary btn-lg shadow-lg shadow-primary/30">
+      Create your first space
+      <i data-lucide="arrow-right" class="w-4 h-4"></i>
+    </a>
+    <p class="mt-4 text-sm text-base-content/40">
+      Already have an account?
+      <a href="{% url 'account_login' %}" class="link link-primary">Sign in</a>
+    </p>
+  </div>
+</section>
+
+{# ── Footer ────────────────────────────────────────────────────────────── #}
+<footer class="footer footer-center bg-base-200 text-base-content/50 rounded p-6 -mx-4 text-sm">
+  <p>© {% now "Y" %} Collective. Built for thoughtful dialogue.</p>
+</footer>
+
+{% endblock %}

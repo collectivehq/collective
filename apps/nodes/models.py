@@ -55,6 +55,7 @@ class Node(MP_Node):  # type: ignore[misc]
         related_name="posts",
     )
     content = models.TextField(blank=True)
+    is_draft = models.BooleanField(default=False)
     reopens_discussion = models.BooleanField(default=False)
     updated_at = models.DateTimeField(null=True, blank=True)
 

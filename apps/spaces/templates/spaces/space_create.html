@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Create Space — Collective{% endblock %}
 {% block content %}
 <div class="max-w-5xl mx-auto">
@@ -7,17 +8,43 @@
   <a href="{% url 'spaces:list' %}" class="btn btn-ghost btn-sm">← Back to spaces</a>
 </div>
   <p class="text-sm text-base-content/60 mb-6">Create a new space. You can configure advanced settings after creation.</p>
-  <form method="post" class="space-y-4">
+  <form method="post" enctype="multipart/form-data" class="space-y-4">
     {% csrf_token %}
-    <div class="form-control">
-      <label class="label" for="id_title"><span class="label-text">Title</span></label>
-      <input type="text" name="title" id="id_title" class="input input-bordered w-full" value="{{ form.title.value|default:'' }}" required>
+    <div class="space-y-1">
+      <label class="label" for="id_title"><span>Title</span></label>
+      <input type="text" name="title" id="id_title" class="input w-full" value="{{ form.title.value|default:'' }}" required>
       {% if form.title.errors %}<p class="text-error text-sm mt-1">{{ form.title.errors.0 }}</p>{% endif %}
     </div>
-    <div class="form-control">
-      <label class="label" for="id_description"><span class="label-text">Description</span></label>
-      <textarea name="description" id="id_description" class="textarea textarea-bordered w-full" rows="4" placeholder="Optional description of the space">{{ form.description.value|default:'' }}</textarea>
+    <div class="space-y-1">
+      <label class="label" for="id_description"><span>Description</span></label>
+      <textarea name="description" id="id_description" class="textarea w-full" rows="4" placeholder="Optional description of the space">{{ form.description.value|default:'' }}</textarea>
     </div>
+    <div class="space-y-1">
+      <label class="label" for="id_information"><span>Information</span></label>
+      <textarea name="information" id="id_information" class="textarea tinymce-editor w-full" rows="8" placeholder="Optional information shown in the space info dialog">{{ form.information.value|default:'' }}</textarea>
+      {% if form.information.errors %}<p class="text-error text-sm mt-1">{{ form.information.errors.0 }}</p>{% endif %}
+    </div>
+    <details class="rounded-box border border-base-300 bg-base-100/70">
+      <summary class="cursor-pointer px-4 py-3 font-medium select-none">Import space from file</summary>
+      <div class="px-4 pb-4 pt-2 space-y-4">
+        <p class="text-sm text-base-content/60">Optionally seed discussions and posts from a DOCX or Markdown file. Each file must contain a <strong>Structure</strong> section (a nested list defining the discussion tree) and a <strong>Content</strong> section (headings matching structure labels, with body text becoming the first post). Provide one file at most.</p>
+        <div class="flex flex-wrap gap-2">
+          <a href="{% static 'examples/space-import-example.docx' %}" class="btn btn-outline btn-xs" download>Download DOCX example</a>
+          <a href="{% static 'examples/space-import-example.md' %}" class="btn btn-outline btn-xs" download>Download Markdown example</a>
+        </div>
+        <div class="space-y-1">
+          <label class="label" for="id_source_docx"><span>DOCX</span></label>
+          <input type="file" name="source_docx" id="id_source_docx" class="file-input w-full" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+          {% if form.source_docx.errors %}<p class="text-error text-sm mt-1">{{ form.source_docx.errors.0 }}</p>{% endif %}
+        </div>
+        <div class="space-y-1">
+          <label class="label" for="id_source_markdown"><span>Markdown</span></label>
+          <input type="file" name="source_markdown" id="id_source_markdown" class="file-input w-full" accept=".md,.markdown,text/markdown,text/plain">
+          {% if form.source_markdown.errors %}<p class="text-error text-sm mt-1">{{ form.source_markdown.errors.0 }}</p>{% endif %}
+        </div>
+      </div>
+    </details>
+    {% if form.non_field_errors %}<p class="text-error text-sm mt-1">{{ form.non_field_errors.0 }}</p>{% endif %}
     <button type="submit" class="btn btn-primary w-full">Create Space</button>
   </form>
 </div>

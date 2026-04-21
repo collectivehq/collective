@@ -10,46 +10,60 @@
     {% csrf_token %}
     {% for field in form %}
       {% if field.name == "opinion_types" or field.name == "reaction_types" %}
-      <div class="form-control">
-        <label class="label py-1"><span class="label-text text-sm">{{ field.label }}</span></label>
-        <div class="filter">
+      <div class="space-y-2" x-data>
+        <label class="label py-1"><span class="text-sm">{{ field.label }}</span></label>
+        <div class="flex flex-wrap gap-2" x-ref="choices">
           {% for choice in field.field.choices %}
           <input type="checkbox" name="{{ field.html_name }}" value="{{ choice.0 }}"
-                 class="btn btn-xs filter-reset:btn-outline"
+                 class="btn btn-sm"
+                 autocomplete="off"
                  aria-label="{{ choice.1 }}"
                  {% if choice.0 in field.value %}checked{% endif %}>
           {% endfor %}
+          <button type="button"
+                  class="btn btn-square btn-sm"
+                  aria-label="Reset {{ field.label }}"
+                  @click="$refs.choices.querySelectorAll('input[type=checkbox]').forEach((input) => { input.checked = false; })">×</button>
         </div>
         {% if field.errors %}<p class="text-error text-xs mt-0.5">{{ field.errors.0 }}</p>{% endif %}
       </div>
       {% elif field.name == "edit_window_minutes" %}
-      <div class="form-control"
+      <div class="space-y-3"
            x-data="{
-             steps: [0, 5, 10, 30, 60, 1440, 525600],
+             steps: ['0', '5', '10', '30', '60', '1440', ''],
              labels: ['Disabled', '5 min', '10 min', '30 min', '1 hour', '1 day', 'No limit'],
+             measureLabels: ['Off', '5m', '10m', '30m', '1h', '1d', '\u221e'],
              pos: 0,
              init() {
-               var val = parseInt(this.$refs.hidden.value) || 0;
+               var val = this.$refs.hidden.value;
                var idx = this.steps.indexOf(val);
                this.pos = idx >= 0 ? idx : 0;
              },
              get minutes() { return this.steps[this.pos]; },
              get label() { return this.labels[this.pos]; }
            }">
-        <label class="label py-1"><span class="label-text text-sm">{{ field.label }}: <span x-text="label" class="font-medium"></span></span></label>
+        <div class="flex items-center justify-between gap-3">
+          <label class="label py-0" for="edit-window-range"><span class="text-sm">{{ field.label }}</span></label>
+          <span class="badge badge-outline badge-sm" x-text="label"></span>
+        </div>
         {{ field }}
-        <input type="range" min="0" :max="steps.length - 1" x-model="pos"
+        <div class="w-full">
+        <input id="edit-window-range" type="range" min="0" :max="steps.length - 1" x-model="pos"
                @input="$refs.hidden.value = minutes"
-               class="range range-xs range-primary" step="1">
-        <div class="flex justify-between text-[10px] text-base-content/40 px-0.5">
-          <template x-for="l in labels"><span x-text="l" class="w-0 text-center"></span></template>
+               class="range range-sm range-primary w-full" step="1">
+        <div class="mt-2 flex justify-between px-2.5 text-xs text-base-content/40">
+          <template x-for="marker in measureLabels" :key="marker"><span>|</span></template>
+        </div>
+        <div class="mt-1 flex justify-between px-2.5 text-xs text-base-content/50">
+          <template x-for="measureLabel in measureLabels" :key="measureLabel"><span x-text="measureLabel"></span></template>
+        </div>
         </div>
         {% if field.errors %}<p class="text-error text-xs mt-0.5">{{ field.errors.0 }}</p>{% endif %}
       </div>
       {% elif field.name == "starts_at" %}
       <div class="grid grid-cols-2 gap-2">
-        <div class="form-control">
-          <label class="label py-1" for="{{ field.id_for_label }}"><span class="label-text text-sm">{{ field.label }}</span></label>
+        <div class="space-y-1">
+          <label class="label py-1" for="{{ field.id_for_label }}"><span class="text-sm">{{ field.label }}</span></label>
           <div class="flex items-center gap-1">
             {{ field }}
             <button type="button" onclick="var inp = this.previousElementSibling; inp.value = '';"
@@ -59,8 +73,8 @@
           </div>
         </div>
       {% elif field.name == "ends_at" %}
-        <div class="form-control">
-          <label class="label py-1" for="{{ field.id_for_label }}"><span class="label-text text-sm">{{ field.label }}</span></label>
+        <div class="space-y-1">
+          <label class="label py-1" for="{{ field.id_for_label }}"><span class="text-sm">{{ field.label }}</span></label>
           <div class="flex items-center gap-1">
             {{ field }}
             <button type="button" onclick="var inp = this.previousElementSibling; inp.value = '';"
@@ -70,15 +84,15 @@
           </div>
         </div>
       </div>
-      {% elif field.name == "description" %}
-      <div class="form-control">
-        <label class="label py-1" for="{{ field.id_for_label }}"><span class="label-text text-sm">{{ field.label }}</span></label>
+      {% elif field.name == "description" or field.name == "information" %}
+      <div class="space-y-1">
+        <label class="label py-1" for="{{ field.id_for_label }}"><span class="text-sm">{{ field.label }}</span></label>
         {{ field }}
         {% if field.errors %}<p class="text-error text-xs mt-0.5">{{ field.errors.0 }}</p>{% endif %}
       </div>
       {% else %}
-      <div class="form-control">
-        <label class="label py-1" for="{{ field.id_for_label }}"><span class="label-text text-sm">{{ field.label }}</span></label>
+      <div class="space-y-1">
+        <label class="label py-1" for="{{ field.id_for_label }}"><span class="text-sm">{{ field.label }}</span></label>
         {{ field }}
         {% if field.errors %}<p class="text-error text-xs mt-0.5">{{ field.errors.0 }}</p>{% endif %}
       </div>

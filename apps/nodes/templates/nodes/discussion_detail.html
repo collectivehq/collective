@@ -12,7 +12,7 @@
             hx-swap="innerHTML"
             class="flex items-center gap-1">
         {% csrf_token %}
-        <input type="text" name="label" value="{{ discussion.label }}" class="input input-bordered input-sm flex-1" required
+        <input type="text" name="label" value="{{ discussion.label }}" class="input input-sm flex-1" required
                x-ref="titleInput" x-init="$watch('editingTitle', v => { if (v) $nextTick(() => $refs.titleInput.focus()) })"
                @keydown.escape="editingTitle = false">
         <button type="submit" class="btn btn-primary btn-xs btn-square flex items-center justify-center tooltip" data-tip="Save">
@@ -30,28 +30,15 @@
           {{ resolution|resolution_label }}
         </span>
         {% if can_resolve %}
-        <form hx-post="{% url 'nodes:discussion_reopen' space_id=space.pk discussion_id=discussion.pk %}"
-              hx-target="#conversation-panel"
-              hx-swap="innerHTML"
-              class="inline">
-          {% csrf_token %}
-          <button type="submit" class="btn btn-ghost btn-xs gap-1" hx-confirm="Reopen this discussion?">
-            <i data-lucide="rotate-ccw" class="w-3 h-3"></i> Reopen
-          </button>
-        </form>
+        <button type="button"
+                class="btn btn-ghost btn-xs gap-1"
+                @click="document.getElementById('reopenDiscussionDialog-{{ discussion.pk }}').showModal()">
+          <i data-lucide="rotate-ccw" class="w-3 h-3"></i> Reopen
+        </button>
         {% endif %}
       {% else %}
         {% if participant.role.can_opine and space.opinion_types and space.is_active %}
-        <div id="opinion-actions" hx-target="#opinion-actions" hx-swap="outerHTML" class="flex items-center gap-1">
-          {% for otype in space.opinion_types %}
-            <button hx-post="{% url 'opinions:toggle_opinion' space_id=space.pk node_id=discussion.pk %}"
-                    hx-vals='{"type": "{{ otype }}"}'
-                    class="btn btn-xs {% if otype == 'agree' %}btn-success{% elif otype == 'disagree' %}btn-error{% else %}btn-ghost{% endif %} {% if user_opinion != otype %}btn-outline{% endif %}">
-              {{ otype|title }}
-              {% if opinions %}<span class="badge badge-xs">{{ opinions|dict_get:otype|default:"0" }}</span>{% endif %}
-            </button>
-          {% endfor %}
-        </div>
+        {% include "opinions/opinion_buttons.html#opinion_actions" with space=space node=discussion opinions=opinions user_opinion=user_opinion %}
         {% endif %}
         {% if can_resolve %}
         <div class="dropdown dropdown-end">
@@ -114,6 +101,29 @@
       {% endif %}
     </div>
   </div>
+
+  {% if resolution and can_resolve %}
+  <dialog id="reopenDiscussionDialog-{{ discussion.pk }}" class="modal">
+    <div class="modal-box max-w-md">
+      <h3 class="text-lg font-semibold">Reopen discussion?</h3>
+      <p class="mt-2 text-sm text-base-content/70">This will mark the discussion active again so new posts can continue under it.</p>
+      <div class="modal-action">
+        <form method="dialog">
+          <button type="submit" class="btn btn-ghost btn-sm">Cancel</button>
+        </form>
+        <form hx-post="{% url 'nodes:discussion_reopen' space_id=space.pk discussion_id=discussion.pk %}"
+              hx-target="#conversation-panel"
+              hx-swap="innerHTML">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-warning btn-sm gap-1">
+            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Reopen discussion
+          </button>
+        </form>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  </dialog>
+  {% endif %}
 
   <div id="opinion-bar-{{ discussion.pk }}">
     {% if opinions %}
@@ -186,6 +196,7 @@
           {% else %}
           <button type="submit" class="btn btn-primary btn-sm">Post</button>
           {% endif %}
+          <button type="submit" name="save_draft" value="true" class="btn btn-ghost btn-sm">Save draft</button>
         </div>
       </form>
     </div>

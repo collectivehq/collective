@@ -70,6 +70,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "django.template.context_processors.csp",
+                "apps.subscriptions.context_processors.notifications",
             ],
         },
     },
@@ -151,6 +152,9 @@ CACHES = {
     }
 }
 
+TOGGLE_RATE_LIMIT_MAX_ATTEMPTS = 20
+TOGGLE_RATE_LIMIT_WINDOW_SECONDS = 60
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # TinyMCE configuration
@@ -193,7 +197,7 @@ SECURE_CSP = {
         "https://cdn.tiny.cloud",
     ],
     "img-src": [CSP.SELF, "data:", "blob:"],
-    "font-src": [CSP.SELF, "https://cdn.tiny.cloud"],
+    "font-src": [CSP.SELF, "https://cdn.tiny.cloud", "https://cdn.jsdelivr.net"],
     "connect-src": [CSP.SELF],
 }
 

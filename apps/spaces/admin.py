@@ -27,8 +27,16 @@ class SpaceAdmin(admin.ModelAdmin):  # type: ignore[type-arg]
 
 @admin.register(Role)
 class RoleAdmin(admin.ModelAdmin):  # type: ignore[type-arg]
-    list_display = ("label", "space", "can_post", "can_resolve", "can_shape_tree", "can_reorganise")
-    list_filter = ("can_post", "can_resolve", "can_shape_tree")
+    list_display = (
+        "label",
+        "space",
+        "can_post",
+        "can_view_drafts",
+        "can_resolve",
+        "can_shape_tree",
+        "can_reorganise",
+    )
+    list_filter = ("can_post", "can_view_drafts", "can_resolve", "can_shape_tree")
 
 
 @admin.register(SpaceParticipant)

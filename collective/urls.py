@@ -18,10 +18,11 @@ Including another URLconf
 from django.conf import settings
 from django.contrib import admin
 from django.urls import include, path
-from django.views.generic import RedirectView
+
+from collective.views import landing
 
 urlpatterns = [
-    path("", RedirectView.as_view(pattern_name="spaces:list"), name="home"),
+    path("", landing, name="home"),
     path("admin/", admin.site.urls),
     path("accounts/", include("allauth.urls")),
     path("accounts/", include("apps.users.urls")),

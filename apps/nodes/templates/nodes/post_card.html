@@ -11,15 +11,26 @@
       </div>
       <div class="flex items-center gap-2">
         <span>{{ post.created_at|timesince }} ago</span>
-        {% if post|is_edited %}<button class="text-base-content/40 hover:text-base-content/60 cursor-pointer text-xs"
+        {% if not post.is_draft and post|is_edited %}<button class="btn btn-ghost btn-xs h-auto min-h-0 px-1 text-base-content/50 hover:text-base-content/70"
             @click="if (!revisionsLoaded) { revisionsLoaded = true; htmx.ajax('GET', '{% url 'nodes:post_revisions' space_id=space.pk post_id=post.pk %}', {target: '#revisions-{{ post.pk }}', swap: 'innerHTML'}) }; document.getElementById('revisionsDialog-{{ post.pk }}').showModal()">edited</button>{% endif %}
         {% if space.is_active %}
-          {% if post.user_can_edit or can_moderate or post.author_id == user.pk or can_reorganise and all_discussions or post|is_edited %}
+          {% if post.user_can_edit or can_moderate or post.author_id == user.pk or can_reorganise and all_discussions or not post.is_draft and post|is_edited %}
           <div class="dropdown dropdown-end">
             <label tabindex="0" class="btn btn-ghost btn-xs btn-square">
               <i data-lucide="ellipsis-vertical" class="w-3.5 h-3.5"></i>
             </label>
             <ul tabindex="0" class="dropdown-content z-10 menu menu-sm p-1 shadow-lg bg-base-100 rounded-box w-40">
+              {% if post.is_draft and post.user_can_edit %}
+              <li data-role="publish-draft-action">
+                <button hx-post="{% url 'nodes:post_publish' space_id=space.pk post_id=post.pk %}"
+                        hx-target="#conversation-panel"
+                        hx-swap="innerHTML"
+                        hx-confirm="{% if resolution %}Publishing will reopen this discussion. Continue?{% endif %}"
+                        {% if resolution %}hx-vals='{"reopens_discussion": "true"}'{% endif %}>
+                  <i data-lucide="send" class="w-3 h-3"></i> Publish
+                </button>
+              </li>
+              {% endif %}
               {% if post.user_can_edit %}
               <li>
                 <button @click="editing = !editing; document.activeElement.blur(); $nextTick(() => { lucide.createIcons(); if (typeof initTinyMCE === 'function') initTinyMCE($el.closest('.card')); })">
@@ -38,12 +49,12 @@
               {% endif %}
               {% if can_reorganise and all_discussions %}
               <li>
-                <button @click="document.getElementById('moveDialog-{{ post.pk }}').showModal(); $el.closest('.dropdown').querySelector('[tabindex]').blur()">
+                <button @click="document.getElementById('moveDialog-{{ post.pk }}').showModal(); lucide.createIcons({ node: document.getElementById('moveDialog-{{ post.pk }}') }); $el.closest('.dropdown').querySelector('[tabindex]').blur()">
                   <i data-lucide="move" class="w-3 h-3"></i> Move
                 </button>
               </li>
               {% endif %}
-              {% if post|is_edited %}
+              {% if not post.is_draft and post|is_edited %}
               <li>
                 <button @click="if (!revisionsLoaded) { revisionsLoaded = true; htmx.ajax('GET', '{% url 'nodes:post_revisions' space_id=space.pk post_id=post.pk %}', {target: '#revisions-{{ post.pk }}', swap: 'innerHTML'}) }; document.getElementById('revisionsDialog-{{ post.pk }}').showModal(); document.activeElement.blur()">
                   <i data-lucide="history" class="w-3 h-3"></i> History
@@ -57,7 +68,7 @@
       </div>
     </div>
     <div x-show="!editing" class="prose prose-sm max-w-none">{{ post.content|sanitize_html }}</div>
-    {% if post|is_edited %}
+    {% if not post.is_draft and post|is_edited %}
     <dialog id="revisionsDialog-{{ post.pk }}" class="modal">
       <div class="modal-box">
         <form method="dialog">
@@ -75,19 +86,38 @@
           hx-post="{% url 'nodes:post_edit' space_id=space.pk post_id=post.pk %}"
           hx-target="#conversation-panel"
           hx-swap="innerHTML"
-          class="space-y-2">
+          class="space-y-2"
+          x-data="{ reopensDiscussion: false }">
       {% csrf_token %}
+      {% if post.is_draft and resolution %}
+      <div class="alert alert-warning text-sm">
+        <i data-lucide="alert-triangle" class="w-4 h-4"></i>
+        <span>Publishing this draft will reopen the discussion.</span>
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" name="reopens_discussion" value="true" x-model="reopensDiscussion" class="checkbox checkbox-sm checkbox-warning">
+          <span class="font-medium">I want to reopen</span>
+        </label>
+      </div>
+      {% endif %}
       <textarea name="content" class="tinymce-editor" data-upload-url="{% url 'nodes:image_upload' space_id=space.pk %}">{{ post.content }}</textarea>
       <div class="flex gap-2">
+        {% if post.is_draft %}
+        <button type="submit" name="publish" value="true" class="btn btn-primary btn-xs">Publish</button>
+        <button type="submit" name="save_draft" value="true" class="btn btn-ghost btn-xs">Save draft</button>
+        {% else %}
         <button type="submit" class="btn btn-primary btn-xs">Save</button>
+        {% endif %}
         <button type="button" @click="editing = false" class="btn btn-ghost btn-xs">Cancel</button>
       </div>
     </form>
     <div class="flex items-center gap-3 mt-2">
-      {% if can_react %}
+      {% if post.is_draft %}
+      <span data-role="draft-badge" class="badge badge-warning badge-xs">Draft</span>
+      {% endif %}
+      {% if can_react and not post.is_draft %}
         {% include "opinions/reaction_buttons.html" with post=post space=space user_reaction=post.user_reaction_type reaction_counts=post.reaction_counts %}
       {% endif %}
-      {% if can_shape and all_discussions and space.is_active %}
+      {% if can_shape and space.is_active and not post.is_draft %}
       <div class="ml-auto" x-show="!editing">
         <form hx-post="{% url 'nodes:post_promote' space_id=space.pk post_id=post.pk %}"
               hx-target="#conversation-panel"
@@ -139,21 +169,21 @@
               <button type="button"
                       x-show="hasChildren('{{ d.pk }}')"
                       @click.stop="toggle('{{ d.pk }}')"
-                      class="flex-shrink-0 p-0.5 text-base-content/60 hover:text-base-content/80">
+                      class="btn btn-ghost btn-xs btn-square flex-shrink-0">
                 <i :data-lucide="isExpanded('{{ d.pk }}') ? 'chevron-down' : 'chevron-right'" class="w-3 h-3"></i>
               </button>
               <span x-show="!hasChildren('{{ d.pk }}')" class="w-4 flex-shrink-0"></span>
               {% else %}
               <button type="button"
                       @click.stop="toggle('{{ d.pk }}')"
-                      class="flex-shrink-0 p-0.5 text-base-content/60 hover:text-base-content/80">
+                      class="btn btn-ghost btn-xs btn-square flex-shrink-0">
                 <i :data-lucide="isExpanded('{{ d.pk }}') ? 'chevron-down' : 'chevron-right'" class="w-3 h-3"></i>
               </button>
               {% endif %}
               <button type="button"
                       @click="selectedDiscussion = '{{ d.pk }}'"
-                      :class="selectedDiscussion === '{{ d.pk }}' ? 'bg-primary/10 font-semibold' : 'hover:bg-base-300'"
-                      class="flex-1 min-w-0 flex items-center justify-between gap-1 rounded-lg py-1 px-2 text-sm text-left">
+                      :class="selectedDiscussion === '{{ d.pk }}' ? 'bg-primary/10 font-semibold' : ''"
+                      class="btn btn-ghost btn-sm h-auto min-h-0 flex-1 min-w-0 justify-between rounded-lg px-2 py-1 text-sm normal-case text-left">
                 <span class="truncate">{{ d.label|default:"Untitled" }}</span>
                 <span class="flex items-center gap-0.5 text-xs text-base-content/50 flex-shrink-0">
                   <i data-lucide="message-square" class="w-3 h-3"></i>{{ d.child_count }}

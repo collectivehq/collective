@@ -4,9 +4,12 @@ import pytest
 from django.test import Client
 from django.urls import reverse
 
+from apps.nodes import services as node_services
 from apps.nodes.tests.factories import NodeFactory
 from apps.spaces import services as space_services
 from apps.spaces.models import Space
+from apps.subscriptions import services as sub_services
+from apps.subscriptions.models import Notification
 from apps.users.tests.factories import UserFactory
 
 
@@ -60,3 +63,52 @@ class TestToggleSubscriptionView:
             reverse("subscriptions:toggle_subscription", kwargs={"space_id": space.pk, "node_id": node.pk}),
         )
         assert response.status_code == 403
+
+
+@pytest.fixture
+def notifications_client():
+    creator = UserFactory()
+    space = space_services.create_space(title="Test", created_by=creator)
+    space_services.open_space(space=space)
+    space = Space.objects.get(pk=space.pk)
+    author = UserFactory()
+    space_services.join_space(space=space, user=author)
+    subscriber = space_services.get_participant(space=space, user=creator)
+    assert subscriber is not None
+    root = space.root_discussion
+    sub_services.subscribe(participant=subscriber, node=root)
+    node_services.create_post(discussion=root, author=author, content="Hello there")
+    c = Client()
+    c.force_login(creator)
+    return c, creator, space, root
+
+
+@pytest.mark.django_db(transaction=True)
+class TestNotificationsCenterView:
+    def test_lists_notifications(self, notifications_client):
+        c, _, _, _ = notifications_client
+
+        response = c.get(reverse("subscriptions:notifications"))
+
+        assert response.status_code == 200
+        assert b"posted in" in response.content
+
+    def test_open_marks_notification_read(self, notifications_client):
+        c, _, space, root = notifications_client
+        notification = Notification.objects.get()
+
+        response = c.get(reverse("subscriptions:notification_open", kwargs={"notification_id": notification.pk}))
+
+        assert response.status_code == 302
+        notification.refresh_from_db()
+        assert notification.read_at is not None
+        assert str(space.pk) in response.url
+        assert str(root.pk) in response.url
+
+    def test_mark_all_read(self, notifications_client):
+        c, _, _, _ = notifications_client
+
+        response = c.post(reverse("subscriptions:notification_mark_all_read"))
+
+        assert response.status_code == 302
+        assert Notification.objects.filter(read_at__isnull=True).count() == 0

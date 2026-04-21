@@ -1,33 +1,44 @@
-{% extends "base.html" %}
+{% extends "account/_base_card.html" %}
+{% load i18n %}
+
 {% block title %}Email Addresses — Collective{% endblock %}
 
-{% block content %}
-<div class="max-w-lg mx-auto">
-  <h1 class="text-2xl font-bold mb-6">Email Addresses</h1>
+{% block card_title %}{% trans "Email Addresses" %}{% endblock %}
 
-  {% if emailaddresses %}
-    <ul class="space-y-2 mb-6">
-      {% for emailaddress in emailaddresses %}
-        <li class="flex items-center gap-2">
-          <span class="font-mono">{{ emailaddress.email }}</span>
-          {% if emailaddress.primary %}<span class="badge badge-primary badge-sm">Primary</span>{% endif %}
-          {% if emailaddress.verified %}<span class="badge badge-success badge-sm">Verified</span>{% else %}<span class="badge badge-warning badge-sm">Unverified</span>{% endif %}
-        </li>
-      {% endfor %}
-    </ul>
-  {% endif %}
+{% block card_content %}
+      <p class="text-center text-sm text-base-content/60 mb-4">
+        {% trans "Manage the email addresses associated with your account." %}
+      </p>
 
-  {% if can_add_email %}
-  <h2 class="text-lg font-semibold mb-4">Add Email</h2>
-  <form method="post" action="{% url 'account_email' %}" class="flex gap-2 mb-4">
-    {% csrf_token %}
-    <input type="email" name="email" class="input input-bordered flex-1" placeholder="New email address" required />
-    <button type="submit" name="action_add" class="btn btn-primary btn-sm">Add</button>
-  </form>
-  {% endif %}
+      {% if emailaddresses %}
+        <div class="space-y-2 mb-5">
+          {% for emailaddress in emailaddresses %}
+            <div class="rounded-box border border-base-300 bg-base-200/50 px-3 py-3 text-left">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <span class="font-mono text-sm break-all">{{ emailaddress.email }}</span>
+                <div class="flex items-center gap-1.5">
+                  {% if emailaddress.primary %}<span class="badge badge-primary badge-sm">{% trans "Primary" %}</span>{% endif %}
+                  {% if emailaddress.verified %}<span class="badge badge-success badge-sm">{% trans "Verified" %}</span>{% else %}<span class="badge badge-warning badge-sm">{% trans "Unverified" %}</span>{% endif %}
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
 
-  <div class="mt-4">
-    <a href="{% url 'users:profile' %}" class="btn btn-ghost btn-sm">← Back to profile</a>
-  </div>
-</div>
+      {% if can_add_email %}
+        <div class="divider my-5">{% trans "Add Email" %}</div>
+        <form method="post" action="{% url 'account_email' %}" class="space-y-3">
+          {% csrf_token %}
+          <div class="space-y-1 text-left">
+            <label class="label" for="id_email"><span>{% trans "New email address" %}</span></label>
+            <input type="email" name="email" id="id_email" class="input w-full" placeholder="new@example.com" required />
+          </div>
+          <button type="submit" name="action_add" class="btn btn-primary w-full">{% trans "Add Email" %}</button>
+        </form>
+      {% endif %}
+
+      <div class="mt-5">
+        <a href="{% url 'users:profile' %}" class="btn btn-ghost w-full">{% trans "Back to Profile" %}</a>
+      </div>
 {% endblock %}

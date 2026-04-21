@@ -22,7 +22,7 @@
         {% csrf_token %}
         <div class="flex items-center gap-2 mb-3">
           <input type="text" name="label" value="{{ item.role.label }}"
-                 class="input input-bordered input-sm flex-1" required>
+                 class="input input-sm flex-1" required>
           <span class="text-xs text-base-content/60">{{ item.participant_count }} member{{ item.participant_count|pluralize }}</span>
         </div>
         <div class="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1">
@@ -71,7 +71,7 @@
         {% csrf_token %}
         <i data-lucide="plus" class="w-4 h-4 text-base-content/60"></i>
         <input type="text" name="label" placeholder="New role name…"
-               class="input input-bordered input-sm flex-1" required>
+               class="input input-sm flex-1" required>
         <button type="submit" class="btn btn-primary btn-sm">Add Role</button>
       </form>
     </div>

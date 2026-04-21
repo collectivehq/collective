@@ -32,7 +32,9 @@ from apps.spaces.permissions import (
     can_reorganise,
     can_resolve_discussion,
     can_shape_tree,
+    can_view_post,
     can_view_space,
+    get_post_edit_denial_reason,
 )
 from apps.spaces.services import get_active_space, get_participant
 from apps.subscriptions.services import is_subscribed
@@ -140,6 +142,9 @@ def discussion_detail(request: HttpRequest, space_id: str, discussion_id: str) -
 
     # Separate by type for template rendering
     inline_children = [c for c in all_children if c.node_type in (Node.NodeType.POST, Node.NodeType.LINK)]
+    inline_children = [
+        child for child in inline_children if not child.is_post or can_view_post(user, child, participant=participant)
+    ]
     # Sub-discussions: child discussions that are NOT link-backed
     link_target_ids = {c.target_id for c in all_children if c.is_link}
     sub_discussions = [c for c in all_children if c.is_discussion and c.pk not in link_target_ids]
@@ -159,18 +164,16 @@ def discussion_detail(request: HttpRequest, space_id: str, discussion_id: str) -
     user_can_reorganise = can_reorganise(user, space, participant=participant)
     user_is_subscribed = is_subscribed(participant=participant, node=discussion) if participant is not None else False
 
-    all_discussions: list[Node] = []
-    if user_can_shape or user_can_moderate or user_can_reorganise:
-        all_discussions = node_services.get_all_discussions_with_levels(space)
+    all_discussions = node_services.get_all_discussions_with_levels(space) if user_can_reorganise else []
 
-    role_map = _get_author_role_map(space, all_children)
+    role_map = _get_author_role_map(space, inline_children)
     # Attaches both user_reaction_type and reaction_counts to each post node
     _attach_user_reactions(inline_children, participant)
 
     # Pre-compute per-post edit permission
     for child in inline_children:
         if child.is_post:
-            child.user_can_edit = can_edit_post(user, child, space, participant=participant) is True
+            child.user_can_edit = can_edit_post(user, child, space, participant=participant)
 
     user_can_react = (
         can_react(user, discussion, participant=participant) if participant is not None and space.is_active else False
@@ -275,7 +278,8 @@ def post_create(request: HttpRequest, space_id: str, discussion_id: str) -> Http
         resolution = ""
 
     reopens = request.POST.get("reopens_discussion", "") == "true"
-    if discussion.resolution_type and not reopens and not resolution:
+    save_as_draft = "save_draft" in request.POST
+    if discussion.resolution_type and not save_as_draft and not reopens and not resolution:
         return HttpResponse("This discussion is resolved. Check 'I want to reopen' to post.", status=400)
 
     try:
@@ -284,14 +288,15 @@ def post_create(request: HttpRequest, space_id: str, discussion_id: str) -> Http
                 discussion=discussion,
                 author=user,
                 content=content,
+                is_draft=save_as_draft,
                 reopens_discussion=reopens,
             )
 
             # Apply resolution/reopen to discussion
-            if resolution:
+            if not save_as_draft and resolution:
                 node_services.resolve_discussion(discussion=discussion, resolution_type=resolution, resolved_by=user)
-            elif reopens and discussion.resolution_type:
-                node_services.reopen_discussion(discussion=discussion)
+            elif not save_as_draft and reopens and discussion.resolution_type:
+                node_services.reopen_discussion(discussion=discussion, actor=user)
     except ValueError as e:
         return HttpResponse(str(e), status=400)
 
@@ -308,20 +313,79 @@ def post_edit(request: HttpRequest, space_id: str, post_id: str) -> HttpResponse
     user = get_user(request)
 
     participant = get_participant(space=space, user=user)
-    edit_check = can_edit_post(user, post, space, participant=participant)
-    if edit_check is not True:
-        if edit_check == "Permission denied":
+    if not can_view_post(user, post, participant=participant):
+        raise PermissionDenied
+    edit_error = get_post_edit_denial_reason(user, post, space, participant=participant)
+    if edit_error is not None:
+        if edit_error == "Permission denied":
             raise PermissionDenied
-        return HttpResponse(edit_check, status=403)
+        return HttpResponse(edit_error, status=403)
 
     content = request.POST.get("content", "").strip()
     if not content:
         return HttpResponse("Content is required", status=400)
 
-    node_services.update_post(post=post, content=content)
+    parent = post.get_parent()
+    publish_draft = post.is_draft and "publish" in request.POST
+    keep_as_draft = post.is_draft and not publish_draft
+    reopens = publish_draft and request.POST.get("reopens_discussion", "") == "true"
+
+    if publish_draft and parent and parent.resolution_type and not reopens:
+        return HttpResponse("This discussion is resolved. Check 'I want to reopen' to publish this draft.", status=400)
+
+    with transaction.atomic():
+        node_services.update_post(
+            post=post,
+            content=content,
+            is_draft=keep_as_draft,
+            reopens_discussion=reopens if publish_draft else None,
+            actor=user,
+        )
+        if publish_draft and parent and parent.resolution_type:
+            node_services.reopen_discussion(discussion=parent, actor=user)
+
+    return discussion_detail(request, space_id, str(parent.pk) if parent else str(post.pk))
+
+
+@require_POST
+@login_required
+def post_publish(request: HttpRequest, space_id: str, post_id: str) -> HttpResponse:
+    space = get_active_space(space_id)
+    post = get_object_or_404(Node, pk=post_id, space=space, deleted_at__isnull=True, node_type=Node.NodeType.POST)
+    user = get_user(request)
+
+    participant = get_participant(space=space, user=user)
+    if not can_view_post(user, post, participant=participant):
+        raise PermissionDenied
+    edit_error = get_post_edit_denial_reason(user, post, space, participant=participant)
+    if edit_error is not None:
+        if edit_error == "Permission denied":
+            raise PermissionDenied
+        return HttpResponse(edit_error, status=403)
+
+    if not post.is_draft:
+        return HttpResponse("Post is already published", status=400)
 
     parent = post.get_parent()
-    return discussion_detail(request, space_id, str(parent.pk) if parent else str(post.pk))
+    reopens = request.POST.get("reopens_discussion", "") == "true"
+
+    if parent and parent.resolution_type and not reopens:
+        return HttpResponse("This discussion is resolved. Confirm reopening to publish.", status=400)
+
+    with transaction.atomic():
+        node_services.update_post(
+            post=post,
+            content=post.content,
+            is_draft=False,
+            reopens_discussion=reopens,
+            actor=user,
+        )
+        if parent and parent.resolution_type and reopens:
+            node_services.reopen_discussion(discussion=parent, actor=user)
+
+    response = discussion_detail(request, space_id, str(parent.pk) if parent else str(post.pk))
+    response["HX-Trigger"] = "refreshTree"
+    return response
 
 
 @require_POST
@@ -360,7 +424,7 @@ def discussion_reopen(request: HttpRequest, space_id: str, discussion_id: str) -
     if not can_resolve_discussion(user, discussion, participant=participant):
         raise PermissionDenied
 
-    node_services.reopen_discussion(discussion=discussion)
+    node_services.reopen_discussion(discussion=discussion, actor=user)
     response = discussion_detail(request, space_id, discussion_id)
     response["HX-Trigger"] = "refreshTree"
     return response
@@ -398,6 +462,8 @@ def post_delete(request: HttpRequest, space_id: str, post_id: str) -> HttpRespon
     user = get_user(request)
 
     participant = get_participant(space=space, user=user)
+    if not can_view_post(user, post, participant=participant):
+        raise PermissionDenied
     if post.author != user and not can_moderate(user, space, participant=participant):
         raise PermissionDenied
 
@@ -434,6 +500,8 @@ def post_move(request: HttpRequest, space_id: str, post_id: str) -> HttpResponse
     user = get_user(request)
 
     participant = get_participant(space=space, user=user)
+    if not can_view_post(user, post, participant=participant):
+        raise PermissionDenied
     if not can_reorganise(user, space, participant=participant):
         raise PermissionDenied
 
@@ -448,8 +516,14 @@ def post_move(request: HttpRequest, space_id: str, post_id: str) -> HttpResponse
     node_services.move_post(post=post, target_discussion=target, position=position)
 
     parent = post.get_parent()
-    response = discussion_detail(request, space_id, str(parent.pk) if parent else str(target.pk))
-    response["HX-Trigger"] = "refreshTree"
+    selected = parent.pk if parent else target.pk
+    response = discussion_detail(request, space_id, str(selected))
+    response["HX-Trigger"] = json.dumps(
+        {
+            "selectDiscussion": {"id": str(selected), "spaceId": str(space.pk)},
+            "refreshTree": {},
+        }
+    )
     return response
 
 
@@ -464,6 +538,8 @@ def post_move_positions(request: HttpRequest, space_id: str, post_id: str) -> Ht
         raise PermissionDenied
 
     post = get_object_or_404(Node, pk=post_id, space=space, deleted_at__isnull=True, node_type=Node.NodeType.POST)
+    if not can_view_post(user, post, participant=participant):
+        raise PermissionDenied
     discussion_id = request.GET.get("discussion_id")
     discussion = get_object_or_404(
         Node, pk=discussion_id, space=space, deleted_at__isnull=True, node_type=Node.NodeType.DISCUSSION
@@ -493,8 +569,12 @@ def post_promote(request: HttpRequest, space_id: str, post_id: str) -> HttpRespo
     user = get_user(request)
 
     participant = get_participant(space=space, user=user)
+    if not can_view_post(user, post, participant=participant):
+        raise PermissionDenied
     if not can_shape_tree(user, space, participant=participant):
         raise PermissionDenied
+    if post.is_draft:
+        return HttpResponse("Draft posts cannot be promoted", status=400)
 
     parent = post.get_parent()
     new_discussion, _link = node_services.promote_post(post=post)
@@ -658,10 +738,13 @@ def _render_tree(request: HttpRequest, space: Space, *, user: User, can_shape: b
 def post_revisions(request: HttpRequest, space_id: str, post_id: str) -> HttpResponse:
     space = get_object_or_404(Space, pk=space_id, deleted_at__isnull=True)
     user = get_user(request)
-    if get_participant(space=space, user=user) is None:
+    participant = get_participant(space=space, user=user)
+    if participant is None:
         raise PermissionDenied
     post = get_object_or_404(Node, pk=post_id, space=space, deleted_at__isnull=True, node_type=Node.NodeType.POST)
-    revisions = PostRevision.objects.filter(post=post).order_by("-created_at")
+    if not can_view_post(user, post, participant=participant):
+        raise PermissionDenied
+    revisions = PostRevision.objects.filter(post=post).order_by("-created_at") if not post.is_draft else []
     return render(request, "nodes/post_revisions.html", {"post": post, "revisions": revisions, "space": space})
 
 
