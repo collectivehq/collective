@@ -19,6 +19,8 @@ class Opinion(models.Model):
 
     class Meta:
         db_table = "opinions"
+        verbose_name = "opinion"
+        verbose_name_plural = "opinions"
         constraints = [
             UniqueConstraint(fields=["participant", "node"], name="opinions_participant_node_unique"),
         ]
@@ -40,6 +42,8 @@ class Reaction(models.Model):
 
     class Meta:
         db_table = "reactions"
+        verbose_name = "reaction"
+        verbose_name_plural = "reactions"
         constraints = [
             UniqueConstraint(fields=["participant", "post"], name="reactions_participant_post_unique"),
         ]

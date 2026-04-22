@@ -35,9 +35,9 @@
     </div>
     <div class="flex-none gap-2">
       {% if user.is_authenticated %}
-        <a href="{% url 'subscriptions:notifications' %}" class="btn btn-ghost btn-sm btn-circle">
+        <a href="{% url 'subscriptions:notifications' %}" class="btn btn-ghost btn-sm btn-circle" aria-label="Notifications">
           <span class="indicator">
-            <i data-lucide="bell" class="w-4 h-4"></i>
+            <i data-lucide="bell" class="w-4 h-4" aria-hidden="true"></i>
             {% if unread_notifications_count %}
             <span class="badge badge-primary badge-xs indicator-item">{% if unread_notifications_count > 99 %}99+{% else %}{{ unread_notifications_count }}{% endif %}</span>
             {% endif %}

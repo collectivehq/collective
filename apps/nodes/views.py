@@ -15,6 +15,7 @@ from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_GET, require_POST
 
 from apps.nodes import services as node_services
+from apps.nodes.constants import VALID_RESOLUTION_TYPES
 from apps.nodes.models import Node, PostRevision
 from apps.opinions.services import (
     get_opinion_counts,
@@ -40,8 +41,6 @@ from apps.spaces.services import get_active_space, get_participant
 from apps.subscriptions.services import is_subscribed
 from apps.users.models import User
 from apps.users.utils import get_user
-
-VALID_RESOLUTION_TYPES = set(dict(Node.ResolutionType.choices))
 
 
 def _attach_link_previews(inline_children: list[Node]) -> None:
@@ -511,7 +510,7 @@ def post_move(request: HttpRequest, space_id: str, post_id: str) -> HttpResponse
     )
     try:
         position = int(request.POST.get("position", -1))
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         position = -1
     node_services.move_post(post=post, target_discussion=target, position=position)
 

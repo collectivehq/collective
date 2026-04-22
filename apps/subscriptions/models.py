@@ -13,6 +13,8 @@ class Subscription(models.Model):
 
     class Meta:
         db_table = "subscriptions"
+        verbose_name = "subscription"
+        verbose_name_plural = "subscriptions"
         constraints = [
             UniqueConstraint(fields=["participant", "node"], name="subscriptions_participant_node_unique"),
         ]
@@ -51,6 +53,8 @@ class Notification(models.Model):
 
     class Meta:
         db_table = "notifications"
+        verbose_name = "notification"
+        verbose_name_plural = "notifications"
         ordering = ["-created_at"]
         indexes = [
             Index(fields=["participant", "read_at", "created_at"], name="notif_part_read_created_idx"),

@@ -72,10 +72,21 @@ class Node(MP_Node):  # type: ignore[misc]
 
     class Meta:
         db_table = "nodes"
+        verbose_name = "node"
+        verbose_name_plural = "nodes"
         indexes = [
             models.Index(
                 fields=["deleted_at"],
                 name="nodes_deleted_at_partial",
+                condition=Q(deleted_at__isnull=True),
+            ),
+            models.Index(
+                fields=["node_type"],
+                name="nodes_node_type_idx",
+            ),
+            models.Index(
+                fields=["space", "node_type"],
+                name="nodes_space_node_type_idx",
                 condition=Q(deleted_at__isnull=True),
             ),
         ]
@@ -115,6 +126,8 @@ class PostRevision(models.Model):
 
     class Meta:
         db_table = "post_revisions"
+        verbose_name = "post revision"
+        verbose_name_plural = "post revisions"
         ordering = ["-created_at"]
 
     def __str__(self) -> str:

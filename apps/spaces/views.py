@@ -11,6 +11,7 @@ from django.views.decorators.http import require_POST
 
 from apps.nodes.models import Node
 from apps.spaces import services as space_services
+from apps.spaces.constants import PERMISSION_LABELS
 from apps.spaces.docx_import import DocxImportError, import_space_from_docx
 from apps.spaces.forms import SpaceCreateForm, SpaceSettingsForm
 from apps.spaces.markdown_import import MarkdownImportError, import_space_from_markdown
@@ -22,7 +23,7 @@ from apps.users.utils import get_user
 
 def _annotate_space_counts(qs: QuerySet[Space]) -> QuerySet[Space]:
     """Annotate a Space queryset with discussion, post, and participant counts."""
-    return qs.annotate(
+    return qs.defer("information").annotate(
         num_discussions=Count(
             "nodes",
             filter=Q(nodes__node_type=Node.NodeType.DISCUSSION, nodes__deleted_at__isnull=True),
@@ -250,19 +251,6 @@ def participant_role_update(request: HttpRequest, space_id: str, participant_id:
 
 
 # ── Roles & Permissions ──────────────────────────────────────────
-
-PERMISSION_LABELS: dict[str, str] = {
-    "can_post": "Post messages",
-    "can_view_drafts": "View draft posts",
-    "can_opine": "Express opinions",
-    "can_react": "React to posts",
-    "can_shape_tree": "Shape discussion tree",
-    "can_resolve": "Resolve discussions",
-    "can_reorganise": "Reorganise content",
-    "can_moderate": "Moderate participants",
-    "can_set_permissions": "Manage permissions",
-    "can_close_space": "Close / archive space",
-}
 
 
 @login_required

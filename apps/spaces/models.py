@@ -7,20 +7,19 @@ from django.db import models
 from django.db.models import UniqueConstraint
 from django.utils import timezone
 
-VALID_OPINION_TYPES = {"agree", "abstain", "disagree"}
-VALID_REACTION_TYPES = {"like", "dislike"}
+from apps.spaces.constants import VALID_OPINION_TYPES, VALID_REACTION_TYPES
 
 
 def validate_opinion_types(value: list[str]) -> None:
     invalid = set(value) - VALID_OPINION_TYPES
     if invalid:
-        raise ValidationError(f"Invalid opinion types: {invalid}. Must be a subset of {VALID_OPINION_TYPES}.")
+        raise ValidationError(f"Invalid opinion types: {invalid}. Must be a subset of {set(VALID_OPINION_TYPES)}.")
 
 
 def validate_reaction_types(value: list[str]) -> None:
     invalid = set(value) - VALID_REACTION_TYPES
     if invalid:
-        raise ValidationError(f"Invalid reaction types: {invalid}. Must be a subset of {VALID_REACTION_TYPES}.")
+        raise ValidationError(f"Invalid reaction types: {invalid}. Must be a subset of {set(VALID_REACTION_TYPES)}.")
 
 
 class Space(models.Model):  # type: ignore[django-manager-missing]
@@ -84,6 +83,11 @@ class Space(models.Model):  # type: ignore[django-manager-missing]
     class Meta:
         db_table = "spaces"
         ordering = ["-updated_at", "-created_at"]
+        verbose_name = "space"
+        verbose_name_plural = "spaces"
+        indexes = [
+            models.Index(fields=["lifecycle"], name="spaces_lifecycle_idx"),
+        ]
 
     def __str__(self) -> str:
         return self.title
@@ -118,6 +122,8 @@ class Role(models.Model):
 
     class Meta:
         db_table = "roles"
+        verbose_name = "role"
+        verbose_name_plural = "roles"
         constraints = [
             UniqueConstraint(fields=["space", "label"], name="roles_space_label_unique"),
         ]
@@ -135,6 +141,8 @@ class SpaceParticipant(models.Model):
 
     class Meta:
         db_table = "space_participants"
+        verbose_name = "space participant"
+        verbose_name_plural = "space participants"
         constraints = [
             UniqueConstraint(fields=["space", "user"], name="space_participants_space_user_unique"),
         ]
@@ -152,6 +160,8 @@ class SpaceInvite(models.Model):
 
     class Meta:
         db_table = "space_invites"
+        verbose_name = "space invite"
+        verbose_name_plural = "space invites"
 
     def __str__(self) -> str:
         return f"Invite to {self.space} as {self.role}"

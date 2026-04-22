@@ -88,6 +88,7 @@ DATABASES = {
         "PASSWORD": os.environ.get("POSTGRES_PASSWORD", "collective"),
         "HOST": os.environ.get("POSTGRES_HOST", "172.21.0.3"),
         "PORT": os.environ.get("POSTGRES_PORT", "5432"),
+        "CONN_MAX_AGE": int(os.environ.get("DJANGO_CONN_MAX_AGE", "60")),
     }
 }
 
@@ -155,7 +156,6 @@ CACHES = {
 TOGGLE_RATE_LIMIT_MAX_ATTEMPTS = 20
 TOGGLE_RATE_LIMIT_WINDOW_SECONDS = 60
 
-DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # TinyMCE configuration
 
@@ -172,6 +172,19 @@ TINYMCE_DEFAULT_CONFIG = {
     "promotion": False,
     "license_key": "gpl",
 }
+
+# Security — production hardening (env-controlled, safe defaults for dev)
+
+SECURE_SSL_REDIRECT = os.environ.get("DJANGO_SECURE_SSL_REDIRECT", "False").lower() in ("true", "1", "yes")
+SECURE_HSTS_SECONDS = int(os.environ.get("DJANGO_SECURE_HSTS_SECONDS", "0"))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = os.environ.get("DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS", "False").lower() in (
+    "true",
+    "1",
+    "yes",
+)
+SECURE_HSTS_PRELOAD = os.environ.get("DJANGO_SECURE_HSTS_PRELOAD", "False").lower() in ("true", "1", "yes")
+SESSION_COOKIE_SECURE = os.environ.get("DJANGO_SESSION_COOKIE_SECURE", "False").lower() in ("true", "1", "yes")
+CSRF_COOKIE_SECURE = os.environ.get("DJANGO_CSRF_COOKIE_SECURE", "False").lower() in ("true", "1", "yes")
 
 # Security — Django 6 CSP
 
@@ -199,6 +212,45 @@ SECURE_CSP = {
     "img-src": [CSP.SELF, "data:", "blob:"],
     "font-src": [CSP.SELF, "https://cdn.tiny.cloud", "https://cdn.jsdelivr.net"],
     "connect-src": [CSP.SELF],
+    "object-src": ["'none'"],
+    "base-uri": [CSP.SELF],
 }
 
 URLIZE_ASSUME_HTTPS = True
+
+# Logging
+
+_LOG_LEVEL = os.environ.get("DJANGO_LOG_LEVEL", "INFO").upper()
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": "{asctime} {levelname} {name} {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "verbose",
+        },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": _LOG_LEVEL,
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["console"],
+            "level": _LOG_LEVEL,
+            "propagate": False,
+        },
+        "apps": {
+            "handlers": ["console"],
+            "level": _LOG_LEVEL,
+            "propagate": False,
+        },
+    },
+}

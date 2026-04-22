@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from django.contrib import admin
 
-from apps.spaces.models import Role, Space, SpaceParticipant
+from apps.spaces.models import Role, Space, SpaceInvite, SpaceParticipant
 
 
 class RoleInline(admin.TabularInline):  # type: ignore[type-arg]
@@ -20,7 +20,10 @@ class SpaceParticipantInline(admin.TabularInline):  # type: ignore[type-arg]
 class SpaceAdmin(admin.ModelAdmin):  # type: ignore[type-arg]
     list_display = ("title", "lifecycle", "created_by", "created_at")
     list_filter = ("lifecycle",)
-    search_fields = ("title",)
+    list_select_related = ("created_by",)
+    search_fields = ("title", "created_by__email", "created_by__username")
+    search_help_text = "Search by title or creator email / username."
+    readonly_fields = ("created_at", "updated_at")
     inlines = [RoleInline, SpaceParticipantInline]
     raw_id_fields = ("created_by", "root_discussion")
 
@@ -37,9 +40,25 @@ class RoleAdmin(admin.ModelAdmin):  # type: ignore[type-arg]
         "can_reorganise",
     )
     list_filter = ("can_post", "can_view_drafts", "can_resolve", "can_shape_tree")
+    list_select_related = ("space",)
+    search_fields = ("label", "space__title")
+    search_help_text = "Search by role label or space title."
 
 
 @admin.register(SpaceParticipant)
 class SpaceParticipantAdmin(admin.ModelAdmin):  # type: ignore[type-arg]
     list_display = ("user", "space", "role", "joined_at")
+    list_select_related = ("user", "space", "role")
+    search_fields = ("user__email", "user__username", "space__title")
+    search_help_text = "Search by user email / username or space title."
     raw_id_fields = ("user", "space", "role")
+
+
+@admin.register(SpaceInvite)
+class SpaceInviteAdmin(admin.ModelAdmin):  # type: ignore[type-arg]
+    list_display = ("space", "role", "created_by", "created_at")
+    list_select_related = ("space", "role", "created_by")
+    search_fields = ("space__title", "created_by__email", "created_by__username")
+    search_help_text = "Search by space title or creator email / username."
+    readonly_fields = ("created_at",)
+    raw_id_fields = ("space", "role", "created_by")

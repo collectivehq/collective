@@ -2,23 +2,17 @@ from __future__ import annotations
 
 from typing import Any
 
+import filetype
 from django import forms
 from django.urls import reverse
 
+from apps.spaces.constants import MAX_IMPORT_FILE_SIZE, OPINION_TYPE_CHOICES, REACTION_TYPE_CHOICES
 from apps.spaces.models import Space
 
-MAX_IMPORT_FILE_SIZE = 5 * 1024 * 1024
-
-OPINION_TYPE_CHOICES = [
-    ("agree", "Agree"),
-    ("abstain", "Abstain"),
-    ("disagree", "Disagree"),
-]
-
-REACTION_TYPE_CHOICES = [
-    ("like", "Like"),
-    ("dislike", "Dislike"),
-]
+# DOCX files are ZIP-based (OOXML); filetype returns 'application/zip'.
+_DOCX_MIME = "application/zip"
+# Plain text has no reliable magic bytes; rely on extension + size for markdown.
+_MARKDOWN_EXTENSIONS = (".md", ".markdown")
 
 
 class SpaceCreateForm(forms.Form):
@@ -39,16 +33,29 @@ class SpaceCreateForm(forms.Form):
             raise forms.ValidationError("Upload a DOCX file.")
         if uploaded.size > MAX_IMPORT_FILE_SIZE:
             raise forms.ValidationError("DOCX file is too large (max 5MB).")
+        # Validate magic bytes — DOCX is ZIP-based (OOXML).
+        header = uploaded.read(261)
+        uploaded.seek(0)
+        kind = filetype.guess(header)
+        if kind is None or kind.mime != _DOCX_MIME:
+            raise forms.ValidationError("Uploaded file does not appear to be a valid DOCX file.")
         return uploaded
 
     def clean_source_markdown(self) -> Any:
         uploaded = self.cleaned_data.get("source_markdown")
         if uploaded is None:
             return None
-        if not uploaded.name.lower().endswith((".md", ".markdown")):
+        if not uploaded.name.lower().endswith(_MARKDOWN_EXTENSIONS):
             raise forms.ValidationError("Upload a Markdown file.")
         if uploaded.size > MAX_IMPORT_FILE_SIZE:
             raise forms.ValidationError("Markdown file is too large (max 5MB).")
+        # Markdown is plain text — no reliable magic bytes.  Reject if filetype
+        # detects a binary format (e.g. uploaded a PDF disguised as .md).
+        header = uploaded.read(261)
+        uploaded.seek(0)
+        kind = filetype.guess(header)
+        if kind is not None:
+            raise forms.ValidationError("Uploaded file does not appear to be a plain-text Markdown file.")
         return uploaded
 
     def clean(self) -> dict[str, Any]:
