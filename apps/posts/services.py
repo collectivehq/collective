@@ -105,8 +105,6 @@ def update_post(
     with transaction.atomic():
         if post.is_draft:
             parent = post.get_parent()
-            if parent is None:
-                raise ValueError("Draft posts must belong to a discussion")
             if not target_is_draft:
                 post.is_draft = False
                 post.created_at = timezone.now()
@@ -127,10 +125,9 @@ def update_post(
         touch_space(space=post.space)
         if published_from_draft and actor_user is not None:
             parent = post.get_parent()
-            if parent is not None:
-                transaction.on_commit(
-                    partial(_send_discussion_posted, discussion_id=parent.pk, post_id=post.pk, actor_id=actor_user.pk)
-                )
+            transaction.on_commit(
+                partial(_send_discussion_posted, discussion_id=parent.pk, post_id=post.pk, actor_id=actor_user.pk)
+            )
     return post
 
 
