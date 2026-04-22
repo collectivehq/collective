@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid as uuid_mod
-from typing import IO
+from typing import IO, cast
 
 import filetype
 from django.contrib.auth.decorators import login_required
@@ -10,7 +10,7 @@ from django.core.exceptions import PermissionDenied
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.db import transaction
-from django.http import HttpRequest, HttpResponse, JsonResponse
+from django.http import Http404, HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_GET, require_POST
 
@@ -22,6 +22,7 @@ from apps.discussions.views import discussion_detail
 from apps.posts import services as post_services
 from apps.posts.models import Link, Post, PostRevision
 from apps.posts.permissions import can_post_to_discussion, can_view_post, get_post_edit_denial_reason
+from apps.spaces.models import Space
 from apps.spaces.permissions import can_moderate
 from apps.spaces.request_context import get_active_space_request_context, get_space_request_context
 
@@ -41,6 +42,13 @@ def _read_limited(file: IO[bytes], max_bytes: int) -> bytes | None:
     if len(data) > max_bytes:
         return None
     return data
+
+
+def _get_content_item(pk: str, space: Space) -> Post | Link | None:
+    post = Post.objects.filter(pk=pk, discussion__space=space, deleted_at__isnull=True).first()
+    if post is not None:
+        return post
+    return Link.objects.filter(pk=pk, discussion__space=space, deleted_at__isnull=True).first()
 
 
 @require_POST
@@ -207,13 +215,17 @@ def link_delete(request: HttpRequest, space_id: str, link_id: str) -> HttpRespon
 
 @require_POST
 @login_required
-def post_move(request: HttpRequest, space_id: str, post_id: str) -> HttpResponse:
+def discussion_item_move(request: HttpRequest, space_id: str, item_id: str) -> HttpResponse:
     context = get_active_space_request_context(request, space_id)
     space = context.space
     user = context.user
     participant = context.participant
-    post = get_object_or_404(Post, pk=post_id, discussion__space=space, deleted_at__isnull=True)
-    if not can_view_post(user, post, participant=participant):
+
+    item = _get_content_item(item_id, space)
+    if item is None:
+        raise Http404
+
+    if item.is_post and not can_view_post(user, cast(Post, item), participant=participant):
         raise PermissionDenied
     if not can_reorganise(user, space, participant=participant):
         raise PermissionDenied
@@ -229,8 +241,9 @@ def post_move(request: HttpRequest, space_id: str, post_id: str) -> HttpResponse
         position = int(request.POST.get("position", -1))
     except TypeError, ValueError:
         position = -1
-    original_parent = post.get_parent()
-    post_services.move_post(post=post, target_discussion=target, position=position)
+
+    original_parent = item.get_parent()
+    post_services.move_discussion_item(item=item, target_discussion=target, position=position)
 
     selected = target.pk if original_parent is None or original_parent.pk != target.pk else original_parent.pk
     response = discussion_detail(request, space_id, str(selected))
@@ -245,8 +258,7 @@ def post_move(request: HttpRequest, space_id: str, post_id: str) -> HttpResponse
 
 @require_GET
 @login_required
-def post_move_positions(request: HttpRequest, space_id: str, post_id: str) -> HttpResponse:
-    """Return sortable post list for the move-post dialog (step 2)."""
+def discussion_item_move_positions(request: HttpRequest, space_id: str, item_id: str) -> HttpResponse:
     context = get_space_request_context(request, space_id)
     space = context.space
     user = context.user
@@ -254,9 +266,13 @@ def post_move_positions(request: HttpRequest, space_id: str, post_id: str) -> Ht
     if not can_reorganise(user, space, participant=participant):
         raise PermissionDenied
 
-    post = get_object_or_404(Post, pk=post_id, discussion__space=space, deleted_at__isnull=True)
-    if not can_view_post(user, post, participant=participant):
+    item = _get_content_item(item_id, space)
+    if item is None:
+        raise Http404
+
+    if item.is_post and not can_view_post(user, cast(Post, item), participant=participant):
         raise PermissionDenied
+
     discussion_id = request.GET.get("discussion_id")
     discussion = get_object_or_404(
         Discussion,
@@ -267,13 +283,13 @@ def post_move_positions(request: HttpRequest, space_id: str, post_id: str) -> Ht
     children = [
         child
         for child in discussion_services.get_discussion_children(discussion)
-        if (child.is_post or child.is_link) and str(child.pk) != str(post_id)
+        if (child.is_post or child.is_link) and str(child.pk) != str(item_id)
     ]
-    children.append(post)
+    children.append(item)
     return render(
         request,
         "posts/move_post_positions.html",
-        {"children": children, "discussion": discussion, "moved_post_id": str(post.pk)},
+        {"children": children, "discussion": discussion, "moved_post_id": str(item.pk)},
     )
 
 
@@ -300,6 +316,7 @@ def post_promote(request: HttpRequest, space_id: str, post_id: str) -> HttpRespo
     return response
 
 
+@require_GET
 @login_required
 def post_revisions(request: HttpRequest, space_id: str, post_id: str) -> HttpResponse:
     context = get_space_request_context(request, space_id)
@@ -351,9 +368,9 @@ __all__ = [
     "post_create",
     "post_delete",
     "post_edit",
-    "post_move",
-    "post_move_positions",
     "post_promote",
     "post_publish",
     "post_revisions",
+    "discussion_item_move",
+    "discussion_item_move_positions",
 ]

@@ -77,39 +77,39 @@
 
   {% if can_reorganise and all_discussions %}
   <dialog id="moveDialog-{{ link.pk }}" class="modal"
-          x-data="{ step: 1, selectedDiscussion: '' }"
-          @close="step = 1; selectedDiscussion = ''"
+          x-data="{
+            step: 1,
+            selectedDiscussion: '',
+            expanded: new Set(),
+            toggle(id) { if (this.expanded.has(id)) this.expanded.delete(id); else this.expanded.add(id); },
+            isExpanded(id) { return this.expanded.has(id); },
+            hasChildren(id) {
+              return document.querySelectorAll('#move-tree-{{ link.pk }} [data-parent-id=\'' + id + '\']').length > 0;
+            }
+          }"
+          @close="step = 1; selectedDiscussion = ''; expanded = new Set()"
           x-ref="moveDialog">
-    <div class="modal-box max-w-md" @click.stop>
-      <form hx-post="{% url 'posts:post_move' space_id=space.pk post_id=link.pk %}"
+    <div class="modal-box max-w-sm" @click.stop>
+      <h3 class="font-bold text-sm mb-3">Move link to…</h3>
+      <form hx-post="{% url 'posts:discussion_item_move' space_id=space.pk item_id=link.pk %}"
             hx-target="#conversation-panel"
             hx-swap="innerHTML"
             @htmx:afterRequest="$refs.moveDialog.close()">
         {% csrf_token %}
+
         <div x-show="step === 1">
-          <h3 class="font-bold text-sm mb-2">Move link to…</h3>
-          <ul class="menu menu-xs bg-base-200 rounded-lg max-h-60 overflow-y-auto flex-nowrap">
-            {% for d in all_discussions %}
-              <li>
-                <label class="flex items-center gap-1.5 cursor-pointer"
-                       style="padding-left: {{ d.level }}rem">
-                  <input type="radio" name="target_discussion_id" value="{{ d.pk }}"
-                         class="radio radio-xs radio-primary" required
-                         @change="selectedDiscussion = '{{ d.pk }}'">
-                  <span class="truncate">{{ d.label|default:"Untitled" }}</span>
-                </label>
-              </li>
-            {% endfor %}
-          </ul>
+          {% include "posts/move_discussion_selector.html" with item_id=link.pk %}
+          <input type="hidden" name="target_discussion_id" :value="selectedDiscussion">
           <div class="modal-action">
             <button type="button" class="btn btn-primary btn-sm"
                     :disabled="!selectedDiscussion"
-                    @click="step = 2; htmx.ajax('GET', '{% url 'posts:post_move_positions' space_id=space.pk post_id=link.pk %}' + '?discussion_id=' + selectedDiscussion, {target: '#move-positions-{{ link.pk }}', swap: 'innerHTML'})">
+                    @click="step = 2; htmx.ajax('GET', '{% url 'posts:discussion_item_move_positions' space_id=space.pk item_id=link.pk %}' + '?discussion_id=' + selectedDiscussion, {target: '#move-positions-{{ link.pk }}', swap: 'innerHTML'})">
               Next
             </button>
             <button type="button" class="btn btn-ghost btn-sm" @click="$refs.moveDialog.close()">Cancel</button>
           </div>
         </div>
+
         <div x-show="step === 2" x-cloak>
           <h3 class="font-bold text-sm mb-2">Select position</h3>
           <div id="move-positions-{{ link.pk }}">
@@ -121,6 +121,7 @@
             <button type="button" class="btn btn-ghost btn-sm" @click="$refs.moveDialog.close()">Cancel</button>
           </div>
         </div>
+
       </form>
     </div>
     <form method="dialog" class="modal-backdrop"><button>close</button></form>

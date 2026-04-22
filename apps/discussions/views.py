@@ -28,6 +28,7 @@ from apps.opinions.services import (
 )
 from apps.posts.models import Link, Post
 from apps.posts.permissions import can_edit_post, can_post_to_discussion, can_view_post
+from apps.reactions.permissions import can_react
 from apps.reactions.services import get_reaction_counts_batch, get_user_reactions_batch
 from apps.spaces.models import Space, SpaceParticipant
 from apps.spaces.permissions import can_moderate, can_view_space
@@ -192,6 +193,7 @@ def discussion_detail(request: HttpRequest, space_id: str, discussion_id: str) -
                 DiscussionDetailPost(
                     post=post,
                     user_can_edit=can_edit_post(user, post, space, participant=participant),
+                    user_can_react=can_react(user, post, participant=participant),
                     user_reaction_type=post_reactions.user_reaction_type,
                     reaction_counts=post_reactions.reaction_counts,
                 )

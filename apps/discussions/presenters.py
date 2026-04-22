@@ -11,6 +11,7 @@ from apps.posts.models import Link, Post
 class DiscussionDetailPost:
     post: Post
     user_can_edit: bool
+    user_can_react: bool
     user_reaction_type: str
     reaction_counts: dict[str, int]
 

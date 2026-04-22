@@ -156,7 +156,7 @@
             </span>
             <div class="flex-1">
               {% if child.is_post %}
-                {% include "posts/post_card.html" with post=child.post user_can_edit=child.user_can_edit user_reaction_type=child.user_reaction_type reaction_counts=child.reaction_counts %}
+                {% include "posts/post_card.html" with post=child.post user_can_edit=child.user_can_edit user_can_react=child.user_can_react user_reaction_type=child.user_reaction_type reaction_counts=child.reaction_counts %}
               {% elif child.is_link %}
                 {% include "posts/link_card.html" with link=child.link link_preview_post=child.link_preview_post %}
               {% endif %}

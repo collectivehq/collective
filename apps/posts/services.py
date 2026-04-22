@@ -18,16 +18,14 @@ from apps.spaces.services import touch_space
 from apps.users.models import User
 
 
-def _ordered_inline_children(
-    discussion: Discussion, *, exclude_post_id: uuid_mod.UUID | None = None
-) -> list[Post | Link]:
+def _ordered_inline_children(discussion: Discussion, *, exclude_id: uuid_mod.UUID | None = None) -> list[Post | Link]:
     posts_qs = Post.objects.filter(discussion=discussion, deleted_at__isnull=True)
-    if exclude_post_id is not None:
-        posts_qs = posts_qs.exclude(pk=exclude_post_id)
+    links_qs = Link.objects.filter(discussion=discussion, deleted_at__isnull=True)
+    if exclude_id is not None:
+        posts_qs = posts_qs.exclude(pk=exclude_id)
+        links_qs = links_qs.exclude(pk=exclude_id)
     posts = list(posts_qs.select_related("created_by"))
-    links = list(
-        Link.objects.filter(discussion=discussion, deleted_at__isnull=True).select_related("created_by", "target")
-    )
+    links = list(links_qs.select_related("created_by", "target"))
     return sorted(
         [*posts, *links],
         key=lambda child: (child.sequence_index, child.created_at, str(child.pk)),
@@ -122,7 +120,9 @@ def update_post(
                 latest_revision.save(update_fields=["content", "created_by"])
         else:
             PostRevision.objects.create(post=post, content=content, created_by=actor_user)
-        update_fields = ["is_draft", "created_at", "sequence_index", "updated_at"]
+        update_fields = ["is_draft", "sequence_index", "updated_at"]
+        if published_from_draft:
+            update_fields.append("created_at")
         post.save(update_fields=update_fields)
         touch_space(space=post.space)
         if published_from_draft and actor_user is not None:
@@ -153,30 +153,34 @@ def delete_link(*, link: Link) -> Link:
     return link
 
 
-def move_post(*, post: Post, target_discussion: Discussion, position: int = -1) -> Post:
+def move_discussion_item(
+    *,
+    item: Post | Link,
+    target_discussion: Discussion,
+    position: int = -1,
+) -> Post | Link:
     with transaction.atomic():
-        old_discussion = post.discussion
-        post.discussion = target_discussion
-        post.sequence_index = next_sequence_index(target_discussion)
-        post.save(update_fields=["discussion", "sequence_index"])
+        old_discussion = item.discussion
+        item.discussion = target_discussion
+        item.sequence_index = next_sequence_index(target_discussion)
+        item.save(update_fields=["discussion", "sequence_index"])
 
-        other_children = _ordered_inline_children(target_discussion, exclude_post_id=post.pk)
-        if position < 0 or position > len(other_children):
-            other_children.append(post)
+        siblings = _ordered_inline_children(target_discussion, exclude_id=item.pk)
+        if position < 0 or position > len(siblings):
+            siblings.append(item)
         else:
-            other_children.insert(position, post)
-
-        _reindex_inline_children(other_children)
+            siblings.insert(position, item)
+        _reindex_inline_children(siblings)
 
         if old_discussion.pk != target_discussion.pk:
             _reindex_inline_children(_ordered_inline_children(old_discussion))
 
-        post.refresh_from_db()
+        item.refresh_from_db()
         touch_space(space=target_discussion.space)
         if old_discussion.space_id != target_discussion.space_id:
             touch_space(space=old_discussion.space)
 
-    return post
+    return item
 
 
 def promote_post_to_discussion(*, post: Post) -> tuple[Discussion, Link]:
@@ -216,7 +220,7 @@ __all__ = [
     "create_post",
     "delete_link",
     "delete_post",
-    "move_post",
+    "move_discussion_item",
     "promote_post_to_discussion",
     "update_post",
 ]

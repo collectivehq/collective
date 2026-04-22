@@ -23,9 +23,7 @@ def _coerce_lookup_id(value: object) -> str | uuid_mod.UUID | None:
 
 
 @receiver(discussion_items_soft_deleted)
-def delete_subscriptions_for_soft_deleted_discussion_items(
-    *, item_ids: Sequence[object], **kwargs: object
-) -> None:
+def delete_subscriptions_for_soft_deleted_discussion_items(*, item_ids: Sequence[object], **kwargs: object) -> None:
     Subscription.objects.filter(discussion_id__in=item_ids).delete()
 
 
