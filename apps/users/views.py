@@ -5,8 +5,8 @@ from django.contrib.auth.decorators import login_required
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect, render
 
+from apps.core.utils import get_user
 from apps.users.forms import ProfileForm
-from apps.users.utils import get_user
 
 
 @login_required

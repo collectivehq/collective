@@ -9,29 +9,29 @@ from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
-from apps.nodes.models import Node
+from apps.core.utils import get_user
 from apps.spaces import services as space_services
-from apps.spaces.constants import PERMISSION_LABELS
-from apps.spaces.docx_import import DocxImportError, import_space_from_docx
+from apps.spaces.constants import EDIT_WINDOW_STEP_OPTIONS, PERMISSION_LABELS
 from apps.spaces.forms import SpaceCreateForm, SpaceSettingsForm
-from apps.spaces.markdown_import import MarkdownImportError, import_space_from_markdown
+from apps.spaces.importers.docx_import import DocxImportError, import_space_from_docx
+from apps.spaces.importers.markdown_import import MarkdownImportError, import_space_from_markdown
 from apps.spaces.models import Role, Space, SpaceInvite, SpaceParticipant
 from apps.spaces.permissions import can_view_space
+from apps.spaces.request_context import get_space_request_context
 from apps.users.models import User
-from apps.users.utils import get_user
 
 
 def _annotate_space_counts(qs: QuerySet[Space]) -> QuerySet[Space]:
     """Annotate a Space queryset with discussion, post, and participant counts."""
     return qs.defer("information").annotate(
         num_discussions=Count(
-            "nodes",
-            filter=Q(nodes__node_type=Node.NodeType.DISCUSSION, nodes__deleted_at__isnull=True),
+            "discussions",
+            filter=Q(discussions__deleted_at__isnull=True),
             distinct=True,
         ),
         num_posts=Count(
-            "nodes",
-            filter=Q(nodes__node_type=Node.NodeType.POST, nodes__deleted_at__isnull=True),
+            "discussions__post",
+            filter=Q(discussions__deleted_at__isnull=True, discussions__post__deleted_at__isnull=True),
             distinct=True,
         ),
         num_participants=Count("participants", distinct=True),
@@ -42,29 +42,19 @@ def space_list(request: HttpRequest) -> HttpResponse:
     if request.user.is_authenticated:
         user = get_user(request)
         participating = (
-            Space.objects.filter(
-                participants__user=user,
-                deleted_at__isnull=True,
-            )
+            Space.objects.for_user(user)
             .select_related("root_discussion", "default_role")
             .order_by("-updated_at", "-created_at")
-            .distinct()
         )
         open_spaces = (
-            Space.objects.filter(
-                lifecycle=Space.Lifecycle.OPEN,
-                deleted_at__isnull=True,
-            )
+            Space.objects.active()
             .select_related("root_discussion", "default_role")
             .order_by("-updated_at", "-created_at")
             .exclude(pk__in=participating)
         )
     else:
         participating = Space.objects.none()
-        open_spaces = Space.objects.filter(
-            lifecycle=Space.Lifecycle.OPEN,
-            deleted_at__isnull=True,
-        ).order_by("-updated_at", "-created_at")
+        open_spaces = Space.objects.active().order_by("-updated_at", "-created_at")
 
     return render(
         request,
@@ -112,11 +102,14 @@ def space_create(request: HttpRequest) -> HttpResponse:
 
 @login_required
 def space_detail(request: HttpRequest, space_id: str) -> HttpResponse:
-    space = get_object_or_404(
-        Space.objects.select_related("created_by", "root_discussion"), pk=space_id, deleted_at__isnull=True
+    context = get_space_request_context(
+        request,
+        space_id,
+        select_related=("created_by", "root_discussion"),
     )
-    user = get_user(request)
-    participant = space_services.get_participant(space=space, user=user)
+    space = context.space
+    user = context.user
+    participant = context.participant
     if not can_view_space(user, space, participant=participant):
         return redirect("spaces:join", space_id=space.pk)
 
@@ -137,10 +130,11 @@ def space_detail(request: HttpRequest, space_id: str) -> HttpResponse:
 
 @login_required
 def space_join(request: HttpRequest, space_id: str) -> HttpResponse:
-    space = get_object_or_404(Space, pk=space_id, deleted_at__isnull=True)
-    user = get_user(request)
+    context = get_space_request_context(request, space_id)
+    space = context.space
+    user = context.user
 
-    if space.lifecycle != Space.Lifecycle.OPEN:
+    if not space.is_active:
         messages.error(request, "This space is not open for joining.")
         return redirect("spaces:list")
 
@@ -162,9 +156,9 @@ def space_join(request: HttpRequest, space_id: str) -> HttpResponse:
 
 @login_required
 def space_settings(request: HttpRequest, space_id: str) -> HttpResponse:
-    space = get_object_or_404(Space, pk=space_id, deleted_at__isnull=True)
-    user = get_user(request)
-    participant = space_services.get_participant(space=space, user=user)
+    context = get_space_request_context(request, space_id)
+    space = context.space
+    participant = context.participant
     if participant is None or not participant.role.can_set_permissions:
         messages.error(request, "Permission denied.")
         return redirect("spaces:detail", space_id=space.pk)
@@ -183,14 +177,27 @@ def space_settings(request: HttpRequest, space_id: str) -> HttpResponse:
     else:
         form = SpaceSettingsForm(instance=space)
 
-    return render(request, "spaces/space_settings.html", {"space": space, "form": form})
+    edit_window_options = [
+        {
+            "value": "" if minutes is None else str(minutes),
+            "label": label,
+            "measure_label": measure_label,
+        }
+        for minutes, label, measure_label in EDIT_WINDOW_STEP_OPTIONS
+    ]
+
+    return render(
+        request,
+        "spaces/space_settings.html",
+        {"space": space, "form": form, "edit_window_options": edit_window_options},
+    )
 
 
 @login_required
 def space_participants(request: HttpRequest, space_id: str) -> HttpResponse:
-    space = get_object_or_404(Space, pk=space_id, deleted_at__isnull=True)
-    user = get_user(request)
-    participant = space_services.get_participant(space=space, user=user)
+    context = get_space_request_context(request, space_id)
+    space = context.space
+    participant = context.participant
     if participant is None:
         raise PermissionDenied
 
@@ -198,7 +205,11 @@ def space_participants(request: HttpRequest, space_id: str) -> HttpResponse:
     can_manage = participant.role.can_moderate
     can_set_permissions = participant.role.can_set_permissions
     roles = Role.objects.filter(space=space) if (can_set_permissions or can_manage) else Role.objects.none()
-    invites = SpaceInvite.objects.filter(space=space).select_related("role", "created_by") if can_manage else []
+    invites = (
+        SpaceInvite.objects.filter(space=space).select_related("role", "created_by").order_by("-created_at")
+        if can_manage
+        else []
+    )
 
     return render(
         request,
@@ -217,9 +228,10 @@ def space_participants(request: HttpRequest, space_id: str) -> HttpResponse:
 @require_POST
 @login_required
 def participant_remove(request: HttpRequest, space_id: str, participant_id: str) -> HttpResponse:
-    space = get_object_or_404(Space, pk=space_id, deleted_at__isnull=True)
-    user = get_user(request)
-    actor = space_services.get_participant(space=space, user=user)
+    context = get_space_request_context(request, space_id)
+    space = context.space
+    user = context.user
+    actor = context.participant
     if actor is None or not actor.role.can_moderate:
         raise PermissionDenied
 
@@ -236,9 +248,9 @@ def participant_remove(request: HttpRequest, space_id: str, participant_id: str)
 @require_POST
 @login_required
 def participant_role_update(request: HttpRequest, space_id: str, participant_id: str) -> HttpResponse:
-    space = get_object_or_404(Space, pk=space_id, deleted_at__isnull=True)
-    user = get_user(request)
-    actor = space_services.get_participant(space=space, user=user)
+    context = get_space_request_context(request, space_id)
+    space = context.space
+    actor = context.participant
     if actor is None or not actor.role.can_set_permissions:
         raise PermissionDenied
 
@@ -255,9 +267,9 @@ def participant_role_update(request: HttpRequest, space_id: str, participant_id:
 
 @login_required
 def space_permissions(request: HttpRequest, space_id: str) -> HttpResponse:
-    space = get_object_or_404(Space, pk=space_id, deleted_at__isnull=True)
-    user = get_user(request)
-    participant = space_services.get_participant(space=space, user=user)
+    context = get_space_request_context(request, space_id)
+    space = context.space
+    participant = context.participant
     if participant is None or not participant.role.can_set_permissions:
         raise PermissionDenied
 
@@ -284,15 +296,16 @@ def space_permissions(request: HttpRequest, space_id: str) -> HttpResponse:
 @require_POST
 @login_required
 def role_create(request: HttpRequest, space_id: str) -> HttpResponse:
-    space = get_object_or_404(Space, pk=space_id, deleted_at__isnull=True)
-    user = get_user(request)
-    participant = space_services.get_participant(space=space, user=user)
+    context = get_space_request_context(request, space_id)
+    space = context.space
+    user = context.user
+    participant = context.participant
     if participant is None or not participant.role.can_set_permissions:
         raise PermissionDenied
 
     label = (request.POST.get("label") or "").strip()
     try:
-        space_services.create_role(space=space, label=label)
+        space_services.create_role(space=space, label=label, created_by=user)
     except ValueError as e:
         messages.error(request, str(e))
         return redirect("spaces:permissions", space_id=space.pk)
@@ -304,9 +317,9 @@ def role_create(request: HttpRequest, space_id: str) -> HttpResponse:
 @require_POST
 @login_required
 def role_update(request: HttpRequest, space_id: str, role_id: str) -> HttpResponse:
-    space = get_object_or_404(Space, pk=space_id, deleted_at__isnull=True)
-    user = get_user(request)
-    participant = space_services.get_participant(space=space, user=user)
+    context = get_space_request_context(request, space_id)
+    space = context.space
+    participant = context.participant
     if participant is None or not participant.role.can_set_permissions:
         raise PermissionDenied
 
@@ -327,9 +340,9 @@ def role_update(request: HttpRequest, space_id: str, role_id: str) -> HttpRespon
 @require_POST
 @login_required
 def role_delete(request: HttpRequest, space_id: str, role_id: str) -> HttpResponse:
-    space = get_object_or_404(Space, pk=space_id, deleted_at__isnull=True)
-    user = get_user(request)
-    participant = space_services.get_participant(space=space, user=user)
+    context = get_space_request_context(request, space_id)
+    space = context.space
+    participant = context.participant
     if participant is None or not participant.role.can_set_permissions:
         raise PermissionDenied
 
@@ -351,9 +364,9 @@ def role_delete(request: HttpRequest, space_id: str, role_id: str) -> HttpRespon
 @require_POST
 @login_required
 def role_set_default(request: HttpRequest, space_id: str, role_id: str) -> HttpResponse:
-    space = get_object_or_404(Space, pk=space_id, deleted_at__isnull=True)
-    user = get_user(request)
-    participant = space_services.get_participant(space=space, user=user)
+    context = get_space_request_context(request, space_id)
+    space = context.space
+    participant = context.participant
     if participant is None or not participant.role.can_set_permissions:
         raise PermissionDenied
 
@@ -369,9 +382,10 @@ def role_set_default(request: HttpRequest, space_id: str, role_id: str) -> HttpR
 @require_POST
 @login_required
 def participant_add(request: HttpRequest, space_id: str) -> HttpResponse:
-    space = get_object_or_404(Space, pk=space_id, deleted_at__isnull=True)
-    user = get_user(request)
-    actor = space_services.get_participant(space=space, user=user)
+    context = get_space_request_context(request, space_id)
+    space = context.space
+    user = context.user
+    actor = context.participant
     if actor is None or not actor.role.can_moderate:
         raise PermissionDenied
 
@@ -395,7 +409,7 @@ def participant_add(request: HttpRequest, space_id: str) -> HttpResponse:
         messages.error(request, "No default role configured for this space.")
         return redirect("spaces:participants", space_id=space.pk)
 
-    SpaceParticipant.objects.create(space=space, user=target_user, role=role)
+    SpaceParticipant.objects.create(space=space, user=target_user, role=role, created_by=user)
     messages.success(request, f'Added "{target_user.name or target_user.email}".')
     return redirect("spaces:participants", space_id=space.pk)
 
@@ -406,9 +420,10 @@ def participant_add(request: HttpRequest, space_id: str) -> HttpResponse:
 @require_POST
 @login_required
 def invite_create(request: HttpRequest, space_id: str) -> HttpResponse:
-    space = get_object_or_404(Space, pk=space_id, deleted_at__isnull=True)
-    user = get_user(request)
-    actor = space_services.get_participant(space=space, user=user)
+    context = get_space_request_context(request, space_id)
+    space = context.space
+    user = context.user
+    actor = context.participant
     if actor is None or not actor.role.can_moderate:
         raise PermissionDenied
 
@@ -426,9 +441,9 @@ def invite_create(request: HttpRequest, space_id: str) -> HttpResponse:
 @require_POST
 @login_required
 def invite_delete(request: HttpRequest, space_id: str, invite_id: str) -> HttpResponse:
-    space = get_object_or_404(Space, pk=space_id, deleted_at__isnull=True)
-    user = get_user(request)
-    actor = space_services.get_participant(space=space, user=user)
+    context = get_space_request_context(request, space_id)
+    space = context.space
+    actor = context.participant
     if actor is None or not actor.role.can_moderate:
         raise PermissionDenied
 
@@ -442,15 +457,20 @@ def invite_delete(request: HttpRequest, space_id: str, invite_id: str) -> HttpRe
 
 @login_required
 def invite_accept(request: HttpRequest, space_id: str, invite_id: str) -> HttpResponse:
-    space = get_object_or_404(Space, pk=space_id, deleted_at__isnull=True)
+    context = get_space_request_context(request, space_id)
+    space = context.space
     invite = get_object_or_404(SpaceInvite, pk=invite_id, space=space)
-    user = get_user(request)
+    user = context.user
 
     if SpaceParticipant.objects.filter(space=space, user=user).exists():
         messages.info(request, "You are already a participant.")
         return redirect("spaces:detail", space_id=space.pk)
 
-    if space.lifecycle != Space.Lifecycle.OPEN:
+    if invite.is_expired:
+        messages.error(request, "This invite link has expired.")
+        return redirect("spaces:list")
+
+    if not space.is_active:
         messages.error(request, "This space is not open for joining.")
         return redirect("spaces:list")
 

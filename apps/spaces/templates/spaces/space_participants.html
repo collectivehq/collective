@@ -65,7 +65,7 @@
               <span class="badge badge-outline badge-sm">{{ p.role.label }}</span>
             {% endif %}
           </td>
-          <td class="text-xs text-base-content/60">{{ p.joined_at|date:"M d, Y" }}</td>
+          <td class="text-xs text-base-content/60">{{ p.created_at|date:"M d, Y" }}</td>
           {% if can_manage %}
           <td>
             {% if p.user != user %}
@@ -102,6 +102,11 @@
             <div class="flex flex-wrap items-center gap-2 mt-2 text-xs text-base-content/60">
               <span class="badge badge-outline badge-xs">{{ invite.role.label }}</span>
               <span>by {{ invite.created_by.name|default:invite.created_by.email }}</span>
+              {% if invite.is_expired %}
+                <span class="badge badge-error badge-xs">Expired</span>
+              {% else %}
+                <span>expires {{ invite.expires_at|date:"M d, Y" }}</span>
+              {% endif %}
             </div>
           </div>
         </div>

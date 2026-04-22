@@ -39,3 +39,10 @@ class TestUser:
         UserFactory(email="unique@example.com")
         with pytest.raises(IntegrityError):
             UserFactory(email="unique@example.com")
+
+    def test_has_no_redundant_lifecycle_timestamps(self):
+        field_names = {field.name for field in User._meta.get_fields()}
+
+        assert "created_at" not in field_names
+        assert "updated_at" not in field_names
+        assert "deleted_at" not in field_names

@@ -1,0 +1,359 @@
+from __future__ import annotations
+
+import json
+import uuid as uuid_mod
+from typing import IO
+
+import filetype
+from django.contrib.auth.decorators import login_required
+from django.core.exceptions import PermissionDenied
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
+from django.db import transaction
+from django.http import HttpRequest, HttpResponse, JsonResponse
+from django.shortcuts import get_object_or_404, render
+from django.views.decorators.http import require_GET, require_POST
+
+from apps.discussions import services as discussion_services
+from apps.discussions.constants import VALID_RESOLUTION_TYPES
+from apps.discussions.models import Discussion
+from apps.discussions.permissions import can_reorganise, can_resolve_discussion, can_shape_tree
+from apps.discussions.views import discussion_detail
+from apps.posts import services as post_services
+from apps.posts.models import Link, Post, PostRevision
+from apps.posts.permissions import can_post_to_discussion, can_view_post, get_post_edit_denial_reason
+from apps.spaces.permissions import can_moderate
+from apps.spaces.request_context import get_active_space_request_context, get_space_request_context
+
+ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+EXT_FOR_TYPE = {"image/jpeg": "jpg", "image/png": "png", "image/gif": "gif", "image/webp": "webp"}
+MAX_UPLOAD_SIZE = 5 * 1024 * 1024  # 5 MB
+
+
+def _read_limited(file: IO[bytes], max_bytes: int) -> bytes | None:
+    """Read up to max_bytes from a file-like object.
+
+    Reads one extra byte past the limit so that an exactly-at-limit file
+    is accepted while an oversized one is detected without buffering it
+    entirely. Returns None if the stream exceeds max_bytes.
+    """
+    data = file.read(max_bytes + 1)
+    if len(data) > max_bytes:
+        return None
+    return data
+
+
+@require_POST
+@login_required
+def post_create(request: HttpRequest, space_id: str, discussion_id: str) -> HttpResponse:
+    context = get_active_space_request_context(request, space_id)
+    space = context.space
+    user = context.user
+    participant = context.participant
+    discussion = get_object_or_404(
+        Discussion,
+        pk=discussion_id,
+        space=space,
+        deleted_at__isnull=True,
+    )
+    if not can_post_to_discussion(user, discussion, participant=participant):
+        raise PermissionDenied
+
+    content = request.POST.get("content", "").strip()
+    if not content:
+        return HttpResponse("Content is required", status=400)
+
+    resolution = request.POST.get("resolution", "")
+    if resolution and resolution not in VALID_RESOLUTION_TYPES:
+        resolution = ""
+    if resolution and not can_resolve_discussion(user, discussion, participant=participant):
+        resolution = ""
+
+    save_as_draft = "save_draft" in request.POST
+
+    try:
+        with transaction.atomic():
+            post_services.create_post(
+                discussion=discussion,
+                author=user,
+                content=content,
+                is_draft=save_as_draft,
+            )
+
+            if not save_as_draft and resolution:
+                discussion_services.resolve_discussion(
+                    discussion=discussion, resolution_type=resolution, resolved_by=user
+                )
+            elif not save_as_draft and discussion.resolution_type:
+                discussion_services.reopen_discussion(discussion=discussion, actor=user)
+    except ValueError as error:
+        return HttpResponse(str(error), status=400)
+
+    response = discussion_detail(request, space_id, discussion_id)
+    response["HX-Trigger"] = "refreshTree"
+    return response
+
+
+@require_POST
+@login_required
+def post_edit(request: HttpRequest, space_id: str, post_id: str) -> HttpResponse:
+    context = get_active_space_request_context(request, space_id)
+    space = context.space
+    user = context.user
+    participant = context.participant
+    post = get_object_or_404(Post, pk=post_id, discussion__space=space, deleted_at__isnull=True)
+    if not can_view_post(user, post, participant=participant):
+        raise PermissionDenied
+    edit_error = get_post_edit_denial_reason(user, post, space, participant=participant)
+    if edit_error is not None:
+        if edit_error == "Permission denied":
+            raise PermissionDenied
+        return HttpResponse(edit_error, status=403)
+
+    content = request.POST.get("content", "").strip()
+    if not content:
+        return HttpResponse("Content is required", status=400)
+
+    parent = post.get_parent()
+    publish_draft = post.is_draft and "publish" in request.POST
+    keep_as_draft = post.is_draft and not publish_draft
+
+    with transaction.atomic():
+        post_services.update_post(
+            post=post,
+            content=content,
+            is_draft=keep_as_draft,
+            actor=user,
+        )
+        if publish_draft and parent and parent.resolution_type:
+            discussion_services.reopen_discussion(discussion=parent, actor=user)
+
+    return discussion_detail(request, space_id, str(parent.pk) if parent else str(post.pk))
+
+
+@require_POST
+@login_required
+def post_publish(request: HttpRequest, space_id: str, post_id: str) -> HttpResponse:
+    context = get_active_space_request_context(request, space_id)
+    space = context.space
+    user = context.user
+    participant = context.participant
+    post = get_object_or_404(Post, pk=post_id, discussion__space=space, deleted_at__isnull=True)
+    if not can_view_post(user, post, participant=participant):
+        raise PermissionDenied
+    edit_error = get_post_edit_denial_reason(user, post, space, participant=participant)
+    if edit_error is not None:
+        if edit_error == "Permission denied":
+            raise PermissionDenied
+        return HttpResponse(edit_error, status=403)
+
+    if not post.is_draft:
+        return HttpResponse("Post is already published", status=400)
+
+    parent = post.get_parent()
+
+    with transaction.atomic():
+        post_services.update_post(
+            post=post,
+            content=post.content,
+            is_draft=False,
+            actor=user,
+        )
+        if parent and parent.resolution_type:
+            discussion_services.reopen_discussion(discussion=parent, actor=user)
+
+    response = discussion_detail(request, space_id, str(parent.pk) if parent else str(post.pk))
+    response["HX-Trigger"] = "refreshTree"
+    return response
+
+
+@require_POST
+@login_required
+def post_delete(request: HttpRequest, space_id: str, post_id: str) -> HttpResponse:
+    context = get_active_space_request_context(request, space_id)
+    space = context.space
+    user = context.user
+    participant = context.participant
+    post = get_object_or_404(Post, pk=post_id, discussion__space=space, deleted_at__isnull=True)
+    if not can_view_post(user, post, participant=participant):
+        raise PermissionDenied
+    if post.author != user and not can_moderate(user, space, participant=participant):
+        raise PermissionDenied
+
+    parent = post.get_parent()
+    post_services.delete_post(post=post)
+    response = discussion_detail(request, space_id, str(parent.pk) if parent else post_id)
+    response["HX-Trigger"] = "refreshTree"
+    return response
+
+
+@require_POST
+@login_required
+def link_delete(request: HttpRequest, space_id: str, link_id: str) -> HttpResponse:
+    context = get_active_space_request_context(request, space_id)
+    space = context.space
+    user = context.user
+    participant = context.participant
+    link = get_object_or_404(Link, pk=link_id, discussion__space=space, deleted_at__isnull=True)
+    if not can_moderate(user, space, participant=participant):
+        raise PermissionDenied
+
+    parent = link.get_parent()
+    post_services.delete_link(link=link)
+    response = discussion_detail(request, space_id, str(parent.pk) if parent else link_id)
+    response["HX-Trigger"] = "refreshTree"
+    return response
+
+
+@require_POST
+@login_required
+def post_move(request: HttpRequest, space_id: str, post_id: str) -> HttpResponse:
+    context = get_active_space_request_context(request, space_id)
+    space = context.space
+    user = context.user
+    participant = context.participant
+    post = get_object_or_404(Post, pk=post_id, discussion__space=space, deleted_at__isnull=True)
+    if not can_view_post(user, post, participant=participant):
+        raise PermissionDenied
+    if not can_reorganise(user, space, participant=participant):
+        raise PermissionDenied
+
+    target_id = request.POST.get("target_discussion_id")
+    target = get_object_or_404(
+        Discussion,
+        pk=target_id,
+        space=space,
+        deleted_at__isnull=True,
+    )
+    try:
+        position = int(request.POST.get("position", -1))
+    except TypeError, ValueError:
+        position = -1
+    original_parent = post.get_parent()
+    post_services.move_post(post=post, target_discussion=target, position=position)
+
+    selected = target.pk if original_parent is None or original_parent.pk != target.pk else original_parent.pk
+    response = discussion_detail(request, space_id, str(selected))
+    response["HX-Trigger"] = json.dumps(
+        {
+            "selectDiscussion": {"id": str(selected), "spaceId": str(space.pk)},
+            "refreshTree": {},
+        }
+    )
+    return response
+
+
+@require_GET
+@login_required
+def post_move_positions(request: HttpRequest, space_id: str, post_id: str) -> HttpResponse:
+    """Return sortable post list for the move-post dialog (step 2)."""
+    context = get_space_request_context(request, space_id)
+    space = context.space
+    user = context.user
+    participant = context.participant
+    if not can_reorganise(user, space, participant=participant):
+        raise PermissionDenied
+
+    post = get_object_or_404(Post, pk=post_id, discussion__space=space, deleted_at__isnull=True)
+    if not can_view_post(user, post, participant=participant):
+        raise PermissionDenied
+    discussion_id = request.GET.get("discussion_id")
+    discussion = get_object_or_404(
+        Discussion,
+        pk=discussion_id,
+        space=space,
+        deleted_at__isnull=True,
+    )
+    children = [
+        child
+        for child in discussion_services.get_discussion_children(discussion)
+        if (child.is_post or child.is_link) and str(child.pk) != str(post_id)
+    ]
+    children.append(post)
+    return render(
+        request,
+        "posts/move_post_positions.html",
+        {"children": children, "discussion": discussion, "moved_post_id": str(post.pk)},
+    )
+
+
+@require_POST
+@login_required
+def post_promote(request: HttpRequest, space_id: str, post_id: str) -> HttpResponse:
+    context = get_active_space_request_context(request, space_id)
+    space = context.space
+    user = context.user
+    participant = context.participant
+    post = get_object_or_404(Post, pk=post_id, discussion__space=space, deleted_at__isnull=True)
+    if not can_view_post(user, post, participant=participant):
+        raise PermissionDenied
+    if not can_shape_tree(user, space, participant=participant):
+        raise PermissionDenied
+    if post.is_draft:
+        return HttpResponse("Draft posts cannot be promoted", status=400)
+
+    parent = post.get_parent()
+    new_discussion, _link = post_services.promote_post_to_discussion(post=post)
+
+    response = discussion_detail(request, space_id, str(parent.pk) if parent else str(post.pk))
+    response["HX-Trigger"] = json.dumps({"selectDiscussion": {"id": str(new_discussion.pk), "spaceId": str(space.pk)}})
+    return response
+
+
+@login_required
+def post_revisions(request: HttpRequest, space_id: str, post_id: str) -> HttpResponse:
+    context = get_space_request_context(request, space_id)
+    space = context.space
+    user = context.user
+    participant = context.participant
+    if participant is None:
+        raise PermissionDenied
+    post = get_object_or_404(Post, pk=post_id, discussion__space=space, deleted_at__isnull=True)
+    if not can_view_post(user, post, participant=participant):
+        raise PermissionDenied
+    revisions = PostRevision.objects.filter(post=post).order_by("-created_at") if not post.is_draft else []
+    return render(request, "posts/post_revisions.html", {"post": post, "revisions": revisions, "space": space})
+
+
+@require_POST
+@login_required
+def image_upload(request: HttpRequest, space_id: str) -> HttpResponse:
+    """Handle image uploads from TinyMCE editor. Returns JSON with location."""
+    context = get_active_space_request_context(request, space_id)
+    participant = context.participant
+    if participant is None:
+        raise PermissionDenied
+    if not participant.role.can_post:
+        raise PermissionDenied
+
+    uploaded = request.FILES.get("file")
+    if not uploaded:
+        return JsonResponse({"error": "No file provided"}, status=400)
+
+    data = _read_limited(uploaded, MAX_UPLOAD_SIZE)
+    if data is None:
+        return JsonResponse({"error": "File too large (max 5MB)"}, status=400)
+
+    detected = filetype.guess(data)
+    if detected is None or detected.mime not in ALLOWED_IMAGE_TYPES:
+        return JsonResponse({"error": "Invalid image file"}, status=400)
+
+    ext = EXT_FOR_TYPE[detected.mime]
+    filename = f"uploads/{space_id}/{uuid_mod.uuid4().hex}.{ext}"
+    saved_path = default_storage.save(filename, ContentFile(data))
+    url = default_storage.url(saved_path)
+    return JsonResponse({"location": url})
+
+
+__all__ = [
+    "image_upload",
+    "link_delete",
+    "post_create",
+    "post_delete",
+    "post_edit",
+    "post_move",
+    "post_move_positions",
+    "post_promote",
+    "post_publish",
+    "post_revisions",
+]

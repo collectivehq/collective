@@ -45,6 +45,7 @@ class RoleFactory(factory.django.DjangoModelFactory):
         model = Role
 
     space = factory.SubFactory(SpaceFactory)
+    created_by = factory.SelfAttribute("space.created_by")
     label = factory.Sequence(lambda n: f"Role {n}")
     can_post = True
     can_view_drafts = False
@@ -59,3 +60,4 @@ class SpaceParticipantFactory(factory.django.DjangoModelFactory):
     space = factory.SubFactory(SpaceFactory)
     user = factory.SubFactory(UserFactory)
     role = factory.SubFactory(RoleFactory, space=factory.SelfAttribute("..space"))
+    created_by = factory.LazyAttribute(lambda participant: participant.user)

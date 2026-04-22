@@ -9,9 +9,10 @@ from django.urls import reverse
 from docx import Document
 from docx.shared import Pt
 
-from apps.nodes.models import Node
+from apps.discussions.models import Discussion
+from apps.posts.models import PostRevision
 from apps.spaces import services as space_services
-from apps.spaces.docx_import import DocxImportError, import_space_from_docx, parse_space_docx
+from apps.spaces.importers.docx_import import DocxImportError, import_space_from_docx, parse_space_docx
 from apps.spaces.models import Space
 from apps.users.tests.factories import UserFactory
 
@@ -97,17 +98,14 @@ class TestImportSpaceFromDocx:
 
         import_space_from_docx(space=space, author=user, docx_bytes=_build_docx_bytes())
 
-        q1 = Node.objects.get(space=space, label="Q1", deleted_at__isnull=True, node_type=Node.NodeType.DISCUSSION)
-        q2 = Node.objects.get(space=space, label="Q2", deleted_at__isnull=True, node_type=Node.NodeType.DISCUSSION)
-        one_a = Node.objects.get(space=space, label="1a", deleted_at__isnull=True, node_type=Node.NodeType.DISCUSSION)
-        one_a_i = Node.objects.get(
-            space=space, label="1a-i", deleted_at__isnull=True, node_type=Node.NodeType.DISCUSSION
-        )
-        one_a_i_alpha = Node.objects.get(
+        q1 = Discussion.objects.get(space=space, label="Q1", deleted_at__isnull=True)
+        q2 = Discussion.objects.get(space=space, label="Q2", deleted_at__isnull=True)
+        one_a = Discussion.objects.get(space=space, label="1a", deleted_at__isnull=True)
+        one_a_i = Discussion.objects.get(space=space, label="1a-i", deleted_at__isnull=True)
+        one_a_i_alpha = Discussion.objects.get(
             space=space,
             label="1a-i-alpha",
             deleted_at__isnull=True,
-            node_type=Node.NodeType.DISCUSSION,
         )
 
         assert q1.get_parent().pk == space.root_discussion.pk
@@ -115,11 +113,16 @@ class TestImportSpaceFromDocx:
         assert one_a.get_parent().pk == q1.pk
         assert one_a_i.get_parent().pk == one_a.pk
         assert one_a_i_alpha.get_parent().pk == one_a_i.pk
-        assert Node.objects.filter(space=space, node_type=Node.NodeType.POST, content__contains="Lorem ipsum").exists()
-        assert Node.objects.filter(space=space, node_type=Node.NodeType.POST, content__contains="Bababa").exists()
-        assert Node.objects.filter(
-            space=space,
-            node_type=Node.NodeType.POST,
+        assert PostRevision.objects.filter(
+            post__discussion__space=space,
+            content__contains="Lorem ipsum",
+        ).exists()
+        assert PostRevision.objects.filter(
+            post__discussion__space=space,
+            content__contains="Bababa",
+        ).exists()
+        assert PostRevision.objects.filter(
+            post__discussion__space=space,
             content__contains="Heading four content",
         ).exists()
 
@@ -149,8 +152,9 @@ class TestSpaceCreateDocxImportView:
 
         assert response.status_code == 302
         space = Space.objects.get(title="Imported Space")
-        assert Node.objects.filter(space=space, label="Q1", deleted_at__isnull=True).exists()
-        assert Node.objects.filter(space=space, label="1a-i-alpha", deleted_at__isnull=True).exists()
-        assert Node.objects.filter(
-            space=space, node_type=Node.NodeType.POST, content__contains="Dolor sit amet"
+        assert Discussion.objects.filter(space=space, label="Q1", deleted_at__isnull=True).exists()
+        assert Discussion.objects.filter(space=space, label="1a-i-alpha", deleted_at__isnull=True).exists()
+        assert PostRevision.objects.filter(
+            post__discussion__space=space,
+            content__contains="Dolor sit amet",
         ).exists()

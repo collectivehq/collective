@@ -7,46 +7,66 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
-from apps.nodes.models import Node
-from apps.spaces.services import get_active_space, get_participant
-from apps.subscriptions import services as sub_services
+from apps.core.rate_limits import allow_toggle_request
+from apps.core.utils import get_user
+from apps.discussions.models import Discussion
+from apps.spaces.request_context import get_active_space_request_context
 from apps.subscriptions.models import Notification
-from apps.users.utils import get_user
+from apps.subscriptions.notification_services import (
+    get_notifications_for_user,
+    mark_all_notifications_read,
+    mark_notification_read,
+)
+from apps.subscriptions.subscription_services import is_subscribed, subscribe, unsubscribe
 
 
 @require_POST
 @login_required
-def toggle_subscription(request: HttpRequest, space_id: str, node_id: str) -> HttpResponse:
-    space = get_active_space(space_id)
-    node = get_object_or_404(Node, pk=node_id, space=space, deleted_at__isnull=True)
-    user = get_user(request)
-    participant = get_participant(space=space, user=user)
+def toggle_subscription(request: HttpRequest, space_id: str, discussion_id: str) -> HttpResponse:
+    context = get_active_space_request_context(request, space_id)
+    space = context.space
+    user = context.user
+    participant = context.participant
+    discussion = get_object_or_404(
+        Discussion,
+        pk=discussion_id,
+        space=space,
+        deleted_at__isnull=True,
+    )
     if participant is None:
         raise PermissionDenied
 
-    if sub_services.is_subscribed(participant=participant, node=node):
-        sub_services.unsubscribe(participant=participant, node=node)
+    if not allow_toggle_request(request=request, action="subscription", space_id=str(space.pk)):
+        return HttpResponse("Too many subscription toggles. Please wait a moment.", status=429)
+
+    if is_subscribed(user=user, discussion=discussion):
+        unsubscribe(user=user, discussion=discussion)
         subscribed = False
     else:
-        sub_services.subscribe(participant=participant, node=node)
+        subscribe(user=user, discussion=discussion)
         subscribed = True
 
     return render(
         request,
         "subscriptions/subscription_button.html",
-        {"space": space, "node": node, "subscribed": subscribed, "dropdown": bool(request.POST.get("dropdown"))},
+        {
+            "space": space,
+            "discussion": discussion,
+            "subscribed": subscribed,
+            "dropdown": bool(request.POST.get("dropdown")),
+        },
     )
 
 
 @login_required
 def notification_center(request: HttpRequest) -> HttpResponse:
     user = get_user(request)
-    notifications = sub_services.get_notifications_for_user(user=user)
+    notifications = get_notifications_for_user(user=user)
     notification_items = [
         {
             "notification": notification,
-            "title": sub_services.notification_title(notification),
-            "preview": sub_services.notification_preview(notification),
+            "title": notification.title(),
+            "preview": notification.preview(),
         }
         for notification in notifications
     ]
@@ -57,7 +77,7 @@ def notification_center(request: HttpRequest) -> HttpResponse:
 @login_required
 def notification_mark_all_read(request: HttpRequest) -> HttpResponse:
     user = get_user(request)
-    sub_services.mark_all_notifications_read(user=user)
+    mark_all_notifications_read(user=user)
     return redirect("subscriptions:notifications")
 
 
@@ -65,11 +85,10 @@ def notification_mark_all_read(request: HttpRequest) -> HttpResponse:
 def notification_open(request: HttpRequest, notification_id: str) -> HttpResponse:
     user = get_user(request)
     notification = get_object_or_404(
-        Notification.objects.select_related("participant__space", "node"),
+        Notification.objects.select_related("discussion__space"),
         pk=notification_id,
-        participant__user=user,
+        recipient=user,
     )
-    sub_services.mark_notification_read(notification=notification)
-    return redirect(
-        f"{reverse('spaces:detail', kwargs={'space_id': notification.node.space_id})}#{notification.node.pk}"
-    )
+    mark_notification_read(notification=notification)
+    destination = reverse("spaces:detail", kwargs={"space_id": notification.discussion.space_id})
+    return redirect(f"{destination}#{notification.discussion.pk}")

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import uuid
 
 from django.contrib.auth.models import AbstractUser
@@ -5,9 +7,9 @@ from django.contrib.postgres.fields import ArrayField
 from django.db import models
 
 
-class User(AbstractUser):  # type: ignore[django-manager-missing]
+class User(AbstractUser):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    name = models.CharField(max_length=255, blank=True)
+    name = models.CharField(max_length=255, blank=True, default="")
     email = models.EmailField(unique=True)
     tags = ArrayField(models.CharField(max_length=50), default=list, blank=True)
 

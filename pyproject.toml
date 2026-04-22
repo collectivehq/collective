@@ -27,13 +27,16 @@ dev = [
     "django-stubs>=6.0",
     "pytest>=9.0",
     "pytest-django>=4.12",
+    "pytest-cov>=7.0",
     "factory-boy>=3.3",
+    "debugpy>=1.8",
 ]
 
 [tool.ruff]
 target-version = "py314"
 line-length = 120
 src = ["collective"]
+# Factory modules stay linted; only generated migrations are excluded.
 extend-exclude = ["*/migrations/*"]
 
 [tool.ruff.lint]
@@ -64,10 +67,10 @@ module = "apps.*.migrations.*"
 ignore_errors = true
 
 [tool.django-stubs]
-django_settings_module = "collective.settings"
+django_settings_module = "collective.settings.development"
 
 [tool.pytest.ini_options]
-DJANGO_SETTINGS_MODULE = "collective.settings"
+DJANGO_SETTINGS_MODULE = "collective.settings.test"
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]

@@ -1,34 +1,30 @@
 from __future__ import annotations
 
 import datetime
+import uuid as uuid_mod
 
 from django.db import transaction
-from django.http import Http404
-from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
-from apps.nodes.models import Node
+from apps.discussions.models import Discussion
 from apps.spaces.models import Role, Space, SpaceParticipant
 from apps.users.models import User
 
 
-def get_active_space(space_id: str) -> Space:
-    """Fetch a space and verify it is still active, or raise."""
-    space = get_object_or_404(Space, pk=space_id, deleted_at__isnull=True)
-    if not space.is_active:
-        raise Http404("Space is no longer active")
-    return space
-
-
-def _touch_space(*, space: Space) -> None:
+def touch_space(*, space: Space | None = None, space_id: uuid_mod.UUID | str | None = None) -> None:
+    target_space_id = space.pk if space is not None else space_id
+    if target_space_id is None:
+        raise ValueError("touch_space requires either space or space_id")
     updated_at = timezone.now()
-    Space.objects.filter(pk=space.pk).update(updated_at=updated_at)
-    space.updated_at = updated_at
+    Space.objects.filter(pk=target_space_id).update(updated_at=updated_at)
+    if space is not None:
+        space.updated_at = updated_at
 
 
-def _create_default_roles(space: Space) -> tuple[Role, Role]:
+def _create_default_roles(*, space: Space, created_by: User) -> tuple[Role, Role]:
     facilitator_role = Role.objects.create(
         space=space,
+        created_by=created_by,
         label="Facilitator",
         can_post=True,
         can_shape_tree=True,
@@ -44,6 +40,7 @@ def _create_default_roles(space: Space) -> tuple[Role, Role]:
 
     member_role = Role.objects.create(
         space=space,
+        created_by=created_by,
         label="Member",
         can_post=True,
         can_opine=True,
@@ -53,6 +50,7 @@ def _create_default_roles(space: Space) -> tuple[Role, Role]:
 
     Role.objects.create(
         space=space,
+        created_by=created_by,
         label="Observer",
         can_post=False,
         can_opine=False,
@@ -92,10 +90,15 @@ def create_space(
             created_by=created_by,
         )
 
-        facilitator_role, member_role = _create_default_roles(space)
+        facilitator_role, member_role = _create_default_roles(space=space, created_by=created_by)
 
         space.default_role = member_role
-        root_discussion = Node.add_root(space=space, label=title, node_type=Node.NodeType.DISCUSSION)
+        root_discussion = Discussion.add_root(
+            space=space,
+            created_by=created_by,
+            label=title,
+            sequence_index=0,
+        )
         space.root_discussion = root_discussion
         space.save(update_fields=["default_role", "root_discussion"])
 
@@ -103,6 +106,7 @@ def create_space(
             space=space,
             user=created_by,
             role=facilitator_role,
+            created_by=created_by,
         )
 
     return space
@@ -111,7 +115,7 @@ def create_space(
 def _set_lifecycle(*, space: Space, lifecycle: str) -> Space:
     space.lifecycle = lifecycle
     space.save(update_fields=["lifecycle"])
-    _touch_space(space=space)
+    touch_space(space=space)
     return space
 
 
@@ -119,56 +123,48 @@ def open_space(*, space: Space) -> Space:
     return _set_lifecycle(space=space, lifecycle=Space.Lifecycle.OPEN)
 
 
-def close_space(*, space: Space) -> Space:
-    return _set_lifecycle(space=space, lifecycle=Space.Lifecycle.CLOSED)
-
-
-def archive_space(*, space: Space) -> Space:
-    return _set_lifecycle(space=space, lifecycle=Space.Lifecycle.ARCHIVED)
-
-
 def join_space(*, space: Space, user: User, role: Role | None = None) -> SpaceParticipant:
-    if space.lifecycle != Space.Lifecycle.OPEN:
-        msg = "Cannot join a space that is not open"
+    if not space.is_active:
+        msg = "Cannot join a space that is not active"
         raise ValueError(msg)
     if role is None:
         role = space.default_role
     if role is None:
         msg = "Space has no default role configured"
         raise ValueError(msg)
-    participant, _created = SpaceParticipant.objects.get_or_create(space=space, user=user, defaults={"role": role})
+    participant, _created = SpaceParticipant.objects.get_or_create(
+        space=space,
+        user=user,
+        defaults={"role": role, "created_by": user},
+    )
     if _created:
-        _touch_space(space=space)
+        touch_space(space=space)
     return participant
 
 
 def leave_space(*, space: Space, user: User) -> None:
     deleted_count, _ = SpaceParticipant.objects.filter(space=space, user=user).delete()
     if deleted_count:
-        _touch_space(space=space)
-
-
-def get_participant(*, space: Space, user: User) -> SpaceParticipant | None:
-    return SpaceParticipant.objects.filter(space=space, user=user).select_related("role").first()
+        touch_space(space=space)
 
 
 def update_participant_role(*, participant: SpaceParticipant, role: Role) -> SpaceParticipant:
     participant.role = role
     participant.save(update_fields=["role"])
-    _touch_space(space=participant.space)
+    touch_space(space=participant.space)
     return participant
 
 
 # ── Role management ───────────────────────────────────────────────
 
 
-def create_role(*, space: Space, label: str) -> Role:
+def create_role(*, space: Space, label: str, created_by: User) -> Role:
     if not label:
         raise ValueError("Role name is required.")
     if Role.objects.filter(space=space, label=label).exists():
         raise ValueError(f'Role "{label}" already exists.')
-    role = Role.objects.create(space=space, label=label)
-    _touch_space(space=space)
+    role = Role.objects.create(space=space, label=label, created_by=created_by)
+    touch_space(space=space)
     return role
 
 
@@ -195,7 +191,7 @@ def update_role(*, role: Role, label: str | None = None, permissions: dict[str, 
         if permissions is not None:
             update_fields.extend(permissions.keys())
         role.save(update_fields=update_fields)
-        _touch_space(space=role.space)
+        touch_space(space=role.space)
     return role
 
 
@@ -207,11 +203,12 @@ def delete_role(*, role: Role) -> str:
     label = role.label
     space = role.space
     role.delete()
-    _touch_space(space=space)
+    touch_space(space=space)
     return label
 
 
-def set_default_role(*, space: Space, role: Role) -> None:
+def set_default_role(*, space: Space, role: Role) -> Space:
     space.default_role = role
     space.save(update_fields=["default_role"])
-    _touch_space(space=space)
+    touch_space(space=space)
+    return space

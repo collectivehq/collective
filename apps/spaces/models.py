@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import datetime
 import uuid
 
 from django.conf import settings
@@ -7,7 +10,13 @@ from django.db import models
 from django.db.models import UniqueConstraint
 from django.utils import timezone
 
+from apps.core.models import BaseModel, CRUDModel
 from apps.spaces.constants import VALID_OPINION_TYPES, VALID_REACTION_TYPES
+from apps.spaces.querysets import SpaceQuerySet
+
+
+def default_invite_expiry() -> datetime.datetime:
+    return timezone.now() + datetime.timedelta(days=settings.INVITE_DEFAULT_EXPIRY_DAYS)
 
 
 def validate_opinion_types(value: list[str]) -> None:
@@ -22,7 +31,7 @@ def validate_reaction_types(value: list[str]) -> None:
         raise ValidationError(f"Invalid reaction types: {invalid}. Must be a subset of {set(VALID_REACTION_TYPES)}.")
 
 
-class Space(models.Model):  # type: ignore[django-manager-missing]
+class Space(CRUDModel):
     class Lifecycle(models.TextChoices):
         DRAFT = "draft", "Draft"
         OPEN = "open", "Open"
@@ -35,10 +44,10 @@ class Space(models.Model):  # type: ignore[django-manager-missing]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     title = models.CharField(max_length=255)
-    description = models.TextField(blank=True)
-    information = models.TextField(blank=True)
+    description = models.TextField(blank=True, default="")
+    information = models.TextField(blank=True, default="")
     root_discussion = models.OneToOneField(
-        "nodes.Node",
+        "discussions.Discussion",
         on_delete=models.PROTECT,
         related_name="root_of_space",
         null=True,
@@ -74,11 +83,9 @@ class Space(models.Model):  # type: ignore[django-manager-missing]
         blank=True,
         related_name="default_for_spaces",
     )
-    template_slug = models.CharField(max_length=100, blank=True)
-    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="created_spaces")
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    deleted_at = models.DateTimeField(null=True, blank=True)
+    template_slug = models.CharField(max_length=100, blank=True, default="")
+
+    objects = SpaceQuerySet.as_manager()
 
     class Meta:
         db_table = "spaces"
@@ -104,9 +111,9 @@ class Space(models.Model):  # type: ignore[django-manager-missing]
         return True
 
 
-class Role(models.Model):
+class Role(BaseModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    space = models.ForeignKey(Space, on_delete=models.CASCADE, related_name="roles")
+    space = models.ForeignKey("spaces.Space", on_delete=models.CASCADE, related_name="roles")
     label = models.CharField(max_length=100)
     can_post = models.BooleanField(default=True)
     can_shape_tree = models.BooleanField(default=False)
@@ -132,12 +139,11 @@ class Role(models.Model):
         return f"{self.label} ({self.space.title})"
 
 
-class SpaceParticipant(models.Model):
+class SpaceParticipant(BaseModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    space = models.ForeignKey(Space, on_delete=models.CASCADE, related_name="participants")
+    space = models.ForeignKey("spaces.Space", on_delete=models.CASCADE, related_name="participants")
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="participations")
-    role = models.ForeignKey(Role, on_delete=models.PROTECT, related_name="participants")
-    joined_at = models.DateTimeField(auto_now_add=True)
+    role = models.ForeignKey("spaces.Role", on_delete=models.PROTECT, related_name="participants")
 
     class Meta:
         db_table = "space_participants"
@@ -151,12 +157,11 @@ class SpaceParticipant(models.Model):
         return f"{self.user} in {self.space}"
 
 
-class SpaceInvite(models.Model):
+class SpaceInvite(BaseModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    space = models.ForeignKey(Space, on_delete=models.CASCADE, related_name="invites")
-    role = models.ForeignKey(Role, on_delete=models.CASCADE, related_name="invites")
-    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="created_invites")
-    created_at = models.DateTimeField(auto_now_add=True)
+    space = models.ForeignKey("spaces.Space", on_delete=models.CASCADE, related_name="invites")
+    role = models.ForeignKey("spaces.Role", on_delete=models.CASCADE, related_name="invites")
+    expires_at = models.DateTimeField(default=default_invite_expiry, db_index=True)
 
     class Meta:
         db_table = "space_invites"
@@ -165,3 +170,7 @@ class SpaceInvite(models.Model):
 
     def __str__(self) -> str:
         return f"Invite to {self.space} as {self.role}"
+
+    @property
+    def is_expired(self) -> bool:
+        return timezone.now() >= self.expires_at

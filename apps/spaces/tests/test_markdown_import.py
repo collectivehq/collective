@@ -5,9 +5,14 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client
 from django.urls import reverse
 
-from apps.nodes.models import Node
+from apps.discussions.models import Discussion
+from apps.posts.models import PostRevision
 from apps.spaces import services as space_services
-from apps.spaces.markdown_import import MarkdownImportError, import_space_from_markdown, parse_space_markdown
+from apps.spaces.importers.markdown_import import (
+    MarkdownImportError,
+    import_space_from_markdown,
+    parse_space_markdown,
+)
 from apps.spaces.models import Space
 from apps.users.tests.factories import UserFactory
 
@@ -78,17 +83,14 @@ class TestImportSpaceFromMarkdown:
 
         import_space_from_markdown(space=space, author=user, markdown_bytes=_build_markdown_bytes())
 
-        q1 = Node.objects.get(space=space, label="Q1", deleted_at__isnull=True, node_type=Node.NodeType.DISCUSSION)
-        q2 = Node.objects.get(space=space, label="Q2", deleted_at__isnull=True, node_type=Node.NodeType.DISCUSSION)
-        one_a = Node.objects.get(space=space, label="1a", deleted_at__isnull=True, node_type=Node.NodeType.DISCUSSION)
-        one_a_i = Node.objects.get(
-            space=space, label="1a-i", deleted_at__isnull=True, node_type=Node.NodeType.DISCUSSION
-        )
-        one_a_i_alpha = Node.objects.get(
+        q1 = Discussion.objects.get(space=space, label="Q1", deleted_at__isnull=True)
+        q2 = Discussion.objects.get(space=space, label="Q2", deleted_at__isnull=True)
+        one_a = Discussion.objects.get(space=space, label="1a", deleted_at__isnull=True)
+        one_a_i = Discussion.objects.get(space=space, label="1a-i", deleted_at__isnull=True)
+        one_a_i_alpha = Discussion.objects.get(
             space=space,
             label="1a-i-alpha",
             deleted_at__isnull=True,
-            node_type=Node.NodeType.DISCUSSION,
         )
 
         assert q1.get_parent().pk == space.root_discussion.pk
@@ -96,13 +98,13 @@ class TestImportSpaceFromMarkdown:
         assert one_a.get_parent().pk == q1.pk
         assert one_a_i.get_parent().pk == one_a.pk
         assert one_a_i_alpha.get_parent().pk == one_a_i.pk
-        assert Node.objects.filter(
-            space=space,
-            node_type=Node.NodeType.POST,
+        assert PostRevision.objects.filter(
+            post__discussion__space=space,
             content__contains="<strong>Lorem ipsum</strong>",
         ).exists()
-        assert Node.objects.filter(
-            space=space, node_type=Node.NodeType.POST, content__contains="<li>Bullet one</li>"
+        assert PostRevision.objects.filter(
+            post__discussion__space=space,
+            content__contains="<li>Bullet one</li>",
         ).exists()
 
 
@@ -131,9 +133,8 @@ class TestSpaceCreateMarkdownImportView:
 
         assert response.status_code == 302
         space = Space.objects.get(title="Imported Markdown Space")
-        assert Node.objects.filter(space=space, label="1a-i-alpha", deleted_at__isnull=True).exists()
-        assert Node.objects.filter(
-            space=space,
-            node_type=Node.NodeType.POST,
+        assert Discussion.objects.filter(space=space, label="1a-i-alpha", deleted_at__isnull=True).exists()
+        assert PostRevision.objects.filter(
+            post__discussion__space=space,
             content__contains="<li>Bullet one</li>",
         ).exists()

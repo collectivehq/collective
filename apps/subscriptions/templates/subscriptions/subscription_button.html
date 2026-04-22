@@ -1,12 +1,12 @@
 {% if dropdown %}
-<button hx-post="{% url 'subscriptions:toggle_subscription' space_id=space.pk node_id=node.pk %}"
+<button hx-post="{% url 'subscriptions:toggle_subscription' space_id=space.pk discussion_id=discussion.pk %}"
         hx-vals='{"dropdown": "1"}'
         hx-target="closest li"
         hx-swap="innerHTML">
   {% if subscribed %}<i data-lucide="bell-off" class="w-3.5 h-3.5"></i> Unsubscribe{% else %}<i data-lucide="bell" class="w-3.5 h-3.5"></i> Subscribe{% endif %}
 </button>
 {% else %}
-<button hx-post="{% url 'subscriptions:toggle_subscription' space_id=space.pk node_id=node.pk %}"
+<button hx-post="{% url 'subscriptions:toggle_subscription' space_id=space.pk discussion_id=discussion.pk %}"
         hx-target="this"
         hx-swap="outerHTML"
         class="btn btn-ghost btn-xs btn-square flex items-center justify-center tooltip {% if subscribed %}btn-active{% endif %}"

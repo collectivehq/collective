@@ -1,15 +1,20 @@
 from __future__ import annotations
 
 import pytest
-from django.db import IntegrityError
+from django.db import IntegrityError, models
 
-from apps.spaces.models import Space, SpaceParticipant
+from apps.core.models import BaseModel, CRUDModel
+from apps.spaces.constants import PERMISSION_LABELS
+from apps.spaces.models import Role, Space, SpaceInvite, SpaceParticipant
 from apps.spaces.tests.factories import RoleFactory, SpaceFactory, SpaceParticipantFactory
 from apps.users.tests.factories import UserFactory
 
 
 @pytest.mark.django_db
 class TestSpace:
+    def test_inherits_crud_model(self):
+        assert issubclass(Space, CRUDModel)
+
     def test_create_space(self):
         space = SpaceFactory(title="My Space")
         assert space.pk is not None
@@ -48,6 +53,7 @@ class TestRole:
         role = RoleFactory(label="Admin")
         assert role.pk is not None
         assert role.label == "Admin"
+        assert role.created_by == role.space.created_by
 
     def test_str(self):
         space = SpaceFactory(title="Test")
@@ -66,12 +72,22 @@ class TestRole:
         assert role.can_shape_tree is False
         assert role.can_moderate is False
 
+    def test_permission_labels_matches_role_fields(self):
+        permission_fields = {
+            field.name
+            for field in Role._meta.get_fields()
+            if isinstance(field, models.BooleanField) and field.name.startswith("can_")
+        }
+
+        assert set(PERMISSION_LABELS) == permission_fields
+
 
 @pytest.mark.django_db
 class TestSpaceParticipant:
     def test_create_participant(self):
         participant = SpaceParticipantFactory()
         assert participant.pk is not None
+        assert participant.created_at is not None
 
     def test_str(self):
         participant = SpaceParticipantFactory()
@@ -82,6 +98,12 @@ class TestSpaceParticipant:
         user = UserFactory()
         space = SpaceFactory()
         role = RoleFactory(space=space)
-        SpaceParticipant.objects.create(space=space, user=user, role=role)
+        SpaceParticipant.objects.create(space=space, user=user, role=role, created_by=user)
         with pytest.raises(IntegrityError):
-            SpaceParticipant.objects.create(space=space, user=user, role=role)
+            SpaceParticipant.objects.create(space=space, user=user, role=role, created_by=user)
+
+
+@pytest.mark.django_db
+class TestSpaceInvite:
+    def test_inherits_base_model(self):
+        assert issubclass(SpaceInvite, BaseModel)

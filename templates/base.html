@@ -31,10 +31,12 @@
   <div id="htmx-progress" style="width: 0%; display: none;"></div>
   <div class="navbar bg-base-100 shadow-sm">
     <div class="flex-1">
+      {# spaces:list — requires apps.spaces #}
       <a href="{% url 'spaces:list' %}" class="btn btn-ghost text-xl">Collective</a>
     </div>
     <div class="flex-none gap-2">
       {% if user.is_authenticated %}
+        {# subscriptions:notifications — requires apps.subscriptions #}
         <a href="{% url 'subscriptions:notifications' %}" class="btn btn-ghost btn-sm btn-circle" aria-label="Notifications">
           <span class="indicator">
             <i data-lucide="bell" class="w-4 h-4" aria-hidden="true"></i>
@@ -59,11 +61,13 @@
             <li class="menu-title px-4 py-2">
               <span class="text-xs text-base-content/50">{{ user.email }}</span>
             </li>
+            {# users:profile — requires apps.users #}
             <li><a href="{% url 'users:profile' %}">Profile</a></li>
             <li><button type="submit" form="navbar-logout-form">Logout</button></li>
           </ul>
         </div>
       {% else %}
+        {# account_login / account_signup — requires django-allauth #}
         <a href="{% url 'account_login' %}" class="btn btn-primary btn-sm">Login</a>
         <a href="{% url 'account_signup' %}" class="btn btn-ghost btn-sm">Sign Up</a>
       {% endif %}

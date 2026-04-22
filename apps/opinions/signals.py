@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any
 
 from django.dispatch import receiver
 
-from apps.nodes.signals import nodes_soft_deleted
-from apps.opinions.models import Opinion, Reaction
+from apps.discussions.signals import discussion_items_soft_deleted
+from apps.opinions.models import Opinion
 
 
-@receiver(nodes_soft_deleted)
-def delete_feedback_for_soft_deleted_nodes(*, node_ids: Sequence[object], **kwargs: Any) -> None:
-    Opinion.objects.filter(node_id__in=node_ids).delete()
-    Reaction.objects.filter(post_id__in=node_ids).delete()
+@receiver(discussion_items_soft_deleted)
+def delete_feedback_for_soft_deleted_discussion_items(*, item_ids: Sequence[object], **kwargs: object) -> None:
+    Opinion.objects.filter(discussion_id__in=item_ids).delete()

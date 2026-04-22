@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load nodes_tags %}
+{% load core_tags %}
 {% block title %}{{ space.title }} — Collective{% endblock %}
 {% block content %}
 <div class="flex flex-col lg:flex-row gap-4">
@@ -19,8 +19,8 @@
         <div class="flex justify-between items-center mb-3">
           <h2 class="font-bold text-lg">
             {% if root_discussion %}
-            <a href="{% url 'nodes:discussion_detail' space_id=space.pk discussion_id=root_discussion.pk %}"
-               hx-get="{% url 'nodes:discussion_detail' space_id=space.pk discussion_id=root_discussion.pk %}"
+            <a href="{% url 'discussions:discussion_detail' space_id=space.pk discussion_id=root_discussion.pk %}"
+              hx-get="{% url 'discussions:discussion_detail' space_id=space.pk discussion_id=root_discussion.pk %}"
                hx-target="#conversation-panel"
                hx-swap="innerHTML"
                class="hover:text-primary">{{ space.title }}</a>
@@ -43,12 +43,12 @@
           </div>
         </div>
         <div id="tree-panel"
-             hx-get="{% url 'nodes:discussion_tree' space_id=space.pk %}"
+             hx-get="{% url 'discussions:discussion_tree' space_id=space.pk %}"
              hx-trigger="load, refreshTree from:body"
              hx-target="#tree-panel"
              hx-swap="innerHTML"
-             data-reorder-url="{% url 'nodes:tree_reorder' space_id=space.pk %}"
-             data-move-url-template="{% url 'nodes:discussion_move' space_id=space.pk discussion_id='00000000-0000-0000-0000-000000000000' %}">
+             data-reorder-url="{% url 'discussions:tree_reorder' space_id=space.pk %}"
+             data-move-url-template="{% url 'discussions:discussion_move' space_id=space.pk discussion_id='00000000-0000-0000-0000-000000000000' %}">
           <span class="loading loading-spinner loading-sm"></span>
         </div>
         {% if participant.role.can_set_permissions or participant.role.can_moderate %}
@@ -76,7 +76,7 @@
     <div id="conversation-panel">
       {% if root_discussion %}
         <div id="initial-node-loader"
-             hx-get="{% url 'nodes:discussion_detail' space_id=space.pk discussion_id=root_discussion.pk %}"
+             hx-get="{% url 'discussions:discussion_detail' space_id=space.pk discussion_id=root_discussion.pk %}"
              hx-trigger="load"
              hx-target="#conversation-panel"
              hx-swap="innerHTML">
@@ -88,7 +88,7 @@
             if (hash) {
               var loader = document.getElementById('initial-node-loader');
               if (loader) {
-                var url = '{% url "nodes:discussion_detail" space_id=space.pk discussion_id="00000000-0000-0000-0000-000000000000" %}'.replace('00000000-0000-0000-0000-000000000000', hash);
+                var url = '{% url "discussions:discussion_detail" space_id=space.pk discussion_id="00000000-0000-0000-0000-000000000000" %}'.replace('00000000-0000-0000-0000-000000000000', hash);
                 loader.setAttribute('hx-get', url);
               }
               window.__treeState = window.__treeState || { expanded: [], selectedNode: null, editingTree: false };

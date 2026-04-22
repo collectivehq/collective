@@ -47,7 +47,7 @@ class RoleAdmin(admin.ModelAdmin):  # type: ignore[type-arg]
 
 @admin.register(SpaceParticipant)
 class SpaceParticipantAdmin(admin.ModelAdmin):  # type: ignore[type-arg]
-    list_display = ("user", "space", "role", "joined_at")
+    list_display = ("user", "space", "role", "created_at")
     list_select_related = ("user", "space", "role")
     search_fields = ("user__email", "user__username", "space__title")
     search_help_text = "Search by user email / username or space title."
@@ -56,9 +56,9 @@ class SpaceParticipantAdmin(admin.ModelAdmin):  # type: ignore[type-arg]
 
 @admin.register(SpaceInvite)
 class SpaceInviteAdmin(admin.ModelAdmin):  # type: ignore[type-arg]
-    list_display = ("space", "role", "created_by", "created_at")
+    list_display = ("space", "role", "created_by", "created_at", "expires_at")
     list_select_related = ("space", "role", "created_by")
     search_fields = ("space__title", "created_by__email", "created_by__username")
     search_help_text = "Search by space title or creator email / username."
-    readonly_fields = ("created_at",)
+    readonly_fields = ("created_at", "expires_at")
     raw_id_fields = ("space", "role", "created_by")

@@ -29,11 +29,13 @@ class TestSpaceIsActive:
         assert open_space.is_active is False
 
     def test_closed_space_false(self, open_space):
-        space_services.close_space(space=open_space)
+        open_space.lifecycle = Space.Lifecycle.CLOSED
+        open_space.save(update_fields=["lifecycle"])
         assert open_space.is_active is False
 
     def test_archived_space_false(self, open_space):
-        space_services.archive_space(space=open_space)
+        open_space.lifecycle = Space.Lifecycle.ARCHIVED
+        open_space.save(update_fields=["lifecycle"])
         assert open_space.is_active is False
 
     def test_not_started_false(self, open_space):

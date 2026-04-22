@@ -2,6 +2,7 @@
 {% block title %}Settings — {{ space.title }}{% endblock %}
 {% block content %}
 <div class="max-w-5xl mx-auto">
+  {{ edit_window_options|json_script:"edit-window-options" }}
   <div class="flex items-center justify-between mb-4">
     <h1 class="text-xl font-bold">Space Settings</h1>
     <a href="{% url 'spaces:detail' space_id=space.pk %}" class="btn btn-ghost btn-sm">← Back to space</a>
@@ -30,17 +31,15 @@
       {% elif field.name == "edit_window_minutes" %}
       <div class="space-y-3"
            x-data="{
-             steps: ['0', '5', '10', '30', '60', '1440', ''],
-             labels: ['Disabled', '5 min', '10 min', '30 min', '1 hour', '1 day', 'No limit'],
-             measureLabels: ['Off', '5m', '10m', '30m', '1h', '1d', '\u221e'],
+             options: JSON.parse(document.getElementById('edit-window-options').textContent),
              pos: 0,
              init() {
                var val = this.$refs.hidden.value;
-               var idx = this.steps.indexOf(val);
+               var idx = this.options.findIndex((option) => option.value === val);
                this.pos = idx >= 0 ? idx : 0;
              },
-             get minutes() { return this.steps[this.pos]; },
-             get label() { return this.labels[this.pos]; }
+             get minutes() { return this.options[this.pos].value; },
+             get label() { return this.options[this.pos].label; }
            }">
         <div class="flex items-center justify-between gap-3">
           <label class="label py-0" for="edit-window-range"><span class="text-sm">{{ field.label }}</span></label>
@@ -48,14 +47,14 @@
         </div>
         {{ field }}
         <div class="w-full">
-        <input id="edit-window-range" type="range" min="0" :max="steps.length - 1" x-model="pos"
+        <input id="edit-window-range" type="range" min="0" :max="options.length - 1" x-model="pos"
                @input="$refs.hidden.value = minutes"
                class="range range-sm range-primary w-full" step="1">
         <div class="mt-2 flex justify-between px-2.5 text-xs text-base-content/40">
-          <template x-for="marker in measureLabels" :key="marker"><span>|</span></template>
+          <template x-for="option in options" :key="option.measure_label"><span>|</span></template>
         </div>
         <div class="mt-1 flex justify-between px-2.5 text-xs text-base-content/50">
-          <template x-for="measureLabel in measureLabels" :key="measureLabel"><span x-text="measureLabel"></span></template>
+          <template x-for="option in options" :key="option.measure_label"><span x-text="option.measure_label"></span></template>
         </div>
         </div>
         {% if field.errors %}<p class="text-error text-xs mt-0.5">{{ field.errors.0 }}</p>{% endif %}

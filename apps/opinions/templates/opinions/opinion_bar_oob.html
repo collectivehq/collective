@@ -1,4 +1,3 @@
-{% load opinions_tags %}
 <div id="opinion-bar-{{ discussion.pk }}" hx-swap-oob="true">
   {% if opinions %}
   {% include "opinions/_opinion_bar.html" with opinions=opinions bar_class="mb-4" %}

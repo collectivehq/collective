@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import filetype
 from django import forms
+from django.core.files.uploadedfile import UploadedFile
 from django.urls import reverse
 
-from apps.spaces.constants import MAX_IMPORT_FILE_SIZE, OPINION_TYPE_CHOICES, REACTION_TYPE_CHOICES
+from apps.spaces.constants import EDIT_WINDOW_STEPS, MAX_IMPORT_FILE_SIZE, OPINION_TYPE_CHOICES, REACTION_TYPE_CHOICES
 from apps.spaces.models import Space
 
 # DOCX files are ZIP-based (OOXML); filetype returns 'application/zip'.
@@ -25,13 +26,15 @@ class SpaceCreateForm(forms.Form):
     source_docx = forms.FileField(required=False)
     source_markdown = forms.FileField(required=False)
 
-    def clean_source_docx(self) -> Any:
-        uploaded = self.cleaned_data.get("source_docx")
+    def clean_source_docx(self) -> UploadedFile | None:
+        uploaded = cast(UploadedFile | None, self.cleaned_data.get("source_docx"))
         if uploaded is None:
             return None
-        if not uploaded.name.lower().endswith(".docx"):
+        uploaded_name = uploaded.name or ""
+        if not uploaded_name.lower().endswith(".docx"):
             raise forms.ValidationError("Upload a DOCX file.")
-        if uploaded.size > MAX_IMPORT_FILE_SIZE:
+        uploaded_size = uploaded.size
+        if uploaded_size is None or uploaded_size > MAX_IMPORT_FILE_SIZE:
             raise forms.ValidationError("DOCX file is too large (max 5MB).")
         # Validate magic bytes — DOCX is ZIP-based (OOXML).
         header = uploaded.read(261)
@@ -41,13 +44,15 @@ class SpaceCreateForm(forms.Form):
             raise forms.ValidationError("Uploaded file does not appear to be a valid DOCX file.")
         return uploaded
 
-    def clean_source_markdown(self) -> Any:
-        uploaded = self.cleaned_data.get("source_markdown")
+    def clean_source_markdown(self) -> UploadedFile | None:
+        uploaded = cast(UploadedFile | None, self.cleaned_data.get("source_markdown"))
         if uploaded is None:
             return None
-        if not uploaded.name.lower().endswith(_MARKDOWN_EXTENSIONS):
+        uploaded_name = uploaded.name or ""
+        if not uploaded_name.lower().endswith(_MARKDOWN_EXTENSIONS):
             raise forms.ValidationError("Upload a Markdown file.")
-        if uploaded.size > MAX_IMPORT_FILE_SIZE:
+        uploaded_size = uploaded.size
+        if uploaded_size is None or uploaded_size > MAX_IMPORT_FILE_SIZE:
             raise forms.ValidationError("Markdown file is too large (max 5MB).")
         # Markdown is plain text — no reliable magic bytes.  Reject if filetype
         # detects a binary format (e.g. uploaded a PDF disguised as .md).
@@ -58,7 +63,7 @@ class SpaceCreateForm(forms.Form):
             raise forms.ValidationError("Uploaded file does not appear to be a plain-text Markdown file.")
         return uploaded
 
-    def clean(self) -> dict[str, Any]:
+    def clean(self) -> dict[str, object]:
         cleaned_data = super().clean() or {}
         if cleaned_data.get("source_docx") and cleaned_data.get("source_markdown"):
             raise forms.ValidationError("Upload either a DOCX file or a Markdown file, not both.")
@@ -104,7 +109,7 @@ class SpaceSettingsForm(forms.ModelForm):  # type: ignore[type-arg]
         super().__init__(*args, **kwargs)
         if self.instance.pk:
             self.fields["information"].widget.attrs["data-upload-url"] = reverse(
-                "nodes:image_upload", kwargs={"space_id": self.instance.pk}
+                "posts:image_upload", kwargs={"space_id": self.instance.pk}
             )
 
     VALID_TRANSITIONS: dict[str, set[str]] = {
@@ -115,9 +120,15 @@ class SpaceSettingsForm(forms.ModelForm):  # type: ignore[type-arg]
     }
 
     def clean_lifecycle(self) -> str:
-        new = self.cleaned_data["lifecycle"]
+        new = str(self.cleaned_data["lifecycle"])
         if self.instance.pk:
             old = self.instance.lifecycle
             if new != old and new not in self.VALID_TRANSITIONS.get(old, set()):
                 raise forms.ValidationError(f"Cannot transition from '{old}' to '{new}'.")
-        return new  # type: ignore[no-any-return]
+        return new
+
+    def clean_edit_window_minutes(self) -> int | None:
+        edit_window_minutes = self.cleaned_data.get("edit_window_minutes")
+        if edit_window_minutes not in EDIT_WINDOW_STEPS:
+            raise forms.ValidationError("Select a valid edit window.")
+        return edit_window_minutes

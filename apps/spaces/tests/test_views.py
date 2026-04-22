@@ -2,36 +2,14 @@ from __future__ import annotations
 
 import pytest
 from django.test import Client
+from django.test.utils import override_settings
 from django.urls import reverse
+from django.utils import timezone
 
-from apps.nodes import services as node_services
+from apps.posts import services as post_services
 from apps.spaces import services as space_services
-from apps.spaces.models import Space
+from apps.spaces.models import Space, SpaceInvite
 from apps.users.tests.factories import UserFactory
-
-
-@pytest.fixture
-def client():
-    return Client()
-
-
-@pytest.fixture
-def auth_client():
-    user = UserFactory()
-    c = Client()
-    c.force_login(user)
-    return c, user
-
-
-@pytest.fixture
-def open_space_with_client():
-    creator = UserFactory()
-    space = space_services.create_space(title="Test Space", created_by=creator)
-    space_services.open_space(space=space)
-    space = Space.objects.get(pk=space.pk)
-    c = Client()
-    c.force_login(creator)
-    return c, creator, space
 
 
 @pytest.mark.django_db
@@ -60,12 +38,30 @@ class TestSpaceListView:
         newer = space_services.create_space(title="Newer Space", created_by=creator)
         space_services.open_space(space=newer)
 
-        node_services.create_post(discussion=older.root_discussion, author=creator, content="Recent activity")
+        post_services.create_post(discussion=older.root_discussion, author=creator, content="Recent activity")
 
         response = c.get(reverse("spaces:list"))
         html = response.content.decode()
 
         assert html.index("Older Space") < html.index("Newer Space")
+
+    def test_hides_not_yet_active_open_spaces(self):
+        creator = UserFactory()
+        active_space = space_services.create_space(title="Active Space", created_by=creator)
+        space_services.open_space(space=active_space)
+        future_space = space_services.create_space(
+            title="Future Space",
+            created_by=creator,
+            starts_at=timezone.now() + timezone.timedelta(hours=1),
+        )
+        space_services.open_space(space=future_space)
+        c = Client()
+
+        response = c.get(reverse("spaces:list"))
+
+        assert response.status_code == 200
+        assert b"Active Space" in response.content
+        assert b"Future Space" not in response.content
 
 
 @pytest.mark.django_db
@@ -147,7 +143,7 @@ class TestSpaceJoinView:
         c.force_login(joiner)
         response = c.post(reverse("spaces:join", kwargs={"space_id": space.pk}))
         assert response.status_code == 302
-        assert space_services.get_participant(space=space, user=joiner) is not None
+        assert Space.objects.get(pk=space.pk).participants.filter(user=joiner).exists()
 
     def test_already_participant_redirects(self, open_space_with_client):
         c, creator, space = open_space_with_client
@@ -156,12 +152,31 @@ class TestSpaceJoinView:
 
     def test_closed_space_redirects(self, open_space_with_client):
         _, _, space = open_space_with_client
-        space_services.close_space(space=space)
+        space.lifecycle = Space.Lifecycle.CLOSED
+        space.save(update_fields=["lifecycle"])
         joiner = UserFactory()
         c = Client()
         c.force_login(joiner)
         response = c.get(reverse("spaces:join", kwargs={"space_id": space.pk}))
         assert response.status_code == 302
+
+    def test_future_space_redirects(self):
+        creator = UserFactory()
+        joiner = UserFactory()
+        space = space_services.create_space(
+            title="Scheduled",
+            created_by=creator,
+            starts_at=timezone.now() + timezone.timedelta(hours=1),
+        )
+        space_services.open_space(space=space)
+        c = Client()
+        c.force_login(joiner)
+
+        response = c.post(reverse("spaces:join", kwargs={"space_id": space.pk}))
+
+        assert response.status_code == 302
+        assert response.url == reverse("spaces:list")
+        assert not Space.objects.get(pk=space.pk).participants.filter(user=joiner).exists()
 
 
 @pytest.mark.django_db
@@ -220,12 +235,12 @@ class TestParticipantRemoveView:
         c, _, space = open_space_with_client
         joiner = UserFactory()
         space_services.join_space(space=space, user=joiner)
-        participant = space_services.get_participant(space=space, user=joiner)
+        participant = Space.objects.get(pk=space.pk).participants.filter(user=joiner).first()
         response = c.post(
             reverse("spaces:participant_remove", kwargs={"space_id": space.pk, "participant_id": participant.pk})
         )
         assert response.status_code == 302
-        assert space_services.get_participant(space=space, user=joiner) is None
+        assert not Space.objects.get(pk=space.pk).participants.filter(user=joiner).exists()
 
     def test_non_moderator_denied(self, open_space_with_client):
         _, _, space = open_space_with_client
@@ -233,7 +248,7 @@ class TestParticipantRemoveView:
         space_services.join_space(space=space, user=joiner)
         joiner2 = UserFactory()
         space_services.join_space(space=space, user=joiner2)
-        participant = space_services.get_participant(space=space, user=joiner2)
+        participant = Space.objects.get(pk=space.pk).participants.filter(user=joiner2).first()
         c = Client()
         c.force_login(joiner)
         response = c.post(
@@ -248,7 +263,7 @@ class TestParticipantRoleUpdateView:
         c, _, space = open_space_with_client
         joiner = UserFactory()
         space_services.join_space(space=space, user=joiner)
-        participant = space_services.get_participant(space=space, user=joiner)
+        participant = Space.objects.get(pk=space.pk).participants.filter(user=joiner).first()
         from apps.spaces.models import Role
 
         observer = Role.objects.filter(space=space, label="Observer").first()
@@ -266,7 +281,7 @@ class TestParticipantRoleUpdateView:
         space_services.join_space(space=space, user=joiner)
         joiner2 = UserFactory()
         space_services.join_space(space=space, user=joiner2)
-        participant = space_services.get_participant(space=space, user=joiner2)
+        participant = Space.objects.get(pk=space.pk).participants.filter(user=joiner2).first()
         c = Client()
         c.force_login(joiner)
         from apps.spaces.models import Role
@@ -277,3 +292,58 @@ class TestParticipantRoleUpdateView:
             {"role_id": str(observer.pk)},
         )
         assert response.status_code == 403
+
+
+@pytest.mark.django_db
+class TestInviteViews:
+    @override_settings(INVITE_DEFAULT_EXPIRY_DAYS=3)
+    def test_invite_create_sets_expiry_from_settings(self, open_space_with_client):
+        c, creator, space = open_space_with_client
+
+        response = c.post(reverse("spaces:invite_create", kwargs={"space_id": space.pk}), {})
+
+        assert response.status_code == 302
+        invite = SpaceInvite.objects.get(space=space, created_by=creator)
+        expected_date = (invite.created_at + timezone.timedelta(days=3)).date()
+        assert invite.expires_at.date() == expected_date
+
+    def test_invite_accept_rejects_expired_invite(self, open_space_with_client):
+        _, creator, space = open_space_with_client
+        joiner = UserFactory()
+        invite = SpaceInvite.objects.create(
+            space=space,
+            role=space.default_role,
+            created_by=creator,
+            expires_at=timezone.now() - timezone.timedelta(minutes=1),
+        )
+        c = Client()
+        c.force_login(joiner)
+
+        response = c.post(reverse("spaces:invite_accept", kwargs={"space_id": space.pk, "invite_id": invite.pk}))
+
+        assert response.status_code == 302
+        assert response.url == reverse("spaces:list")
+        assert not space.participants.filter(user=joiner).exists()
+
+    def test_invite_accept_rejects_not_yet_active_space(self):
+        creator = UserFactory()
+        joiner = UserFactory()
+        space = space_services.create_space(
+            title="Scheduled",
+            created_by=creator,
+            starts_at=timezone.now() + timezone.timedelta(hours=1),
+        )
+        space_services.open_space(space=space)
+        invite = SpaceInvite.objects.create(
+            space=space,
+            role=space.default_role,
+            created_by=creator,
+        )
+        c = Client()
+        c.force_login(joiner)
+
+        response = c.post(reverse("spaces:invite_accept", kwargs={"space_id": space.pk, "invite_id": invite.pk}))
+
+        assert response.status_code == 302
+        assert response.url == reverse("spaces:list")
+        assert not space.participants.filter(user=joiner).exists()

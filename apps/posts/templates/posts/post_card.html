@@ -1,0 +1,217 @@
+{% load post_tags core_tags %}
+<div class="card bg-base-100 shadow-sm mb-2"
+     x-data="{ editing: false, revisionsLoaded: false }">
+  <div class="card-body py-3 px-4">
+    <div class="flex items-center justify-between text-xs text-base-content/60 mb-1">
+      <div class="flex items-center gap-1.5">
+        <span class="font-medium">{{ post.author.name|default:post.author.email }}</span>
+        {% with author_role=role_map|get_role:post.author_id %}
+          {% if author_role %}<span class="badge badge-ghost badge-xs">{{ author_role }}</span>{% endif %}
+        {% endwith %}
+      </div>
+      <div class="flex items-center gap-2">
+        <span>{{ post.created_at|timesince }} ago</span>
+        {% if not post.is_draft and post|is_edited %}<button class="btn btn-ghost btn-xs h-auto min-h-0 px-1 text-base-content/50 hover:text-base-content/70"
+            @click="if (!revisionsLoaded) { revisionsLoaded = true; htmx.ajax('GET', '{% url 'posts:post_revisions' space_id=space.pk post_id=post.pk %}', {target: '#revisions-{{ post.pk }}', swap: 'innerHTML'}) }; document.getElementById('revisionsDialog-{{ post.pk }}').showModal()">edited</button>{% endif %}
+        {% if space.is_active %}
+          {% if user_can_edit or can_moderate or post.author_id == user.pk or can_reorganise and all_discussions or not post.is_draft and post|is_edited %}
+          <div class="dropdown dropdown-end">
+            <label tabindex="0" class="btn btn-ghost btn-xs btn-square">
+              <i data-lucide="ellipsis-vertical" class="w-3.5 h-3.5"></i>
+            </label>
+            <ul tabindex="0" class="dropdown-content z-10 menu menu-sm p-1 shadow-lg bg-base-100 rounded-box w-40">
+              {% if post.is_draft and user_can_edit %}
+              <li data-role="publish-draft-action">
+                <button hx-post="{% url 'posts:post_publish' space_id=space.pk post_id=post.pk %}"
+                        hx-target="#conversation-panel"
+                        hx-swap="innerHTML"
+                        hx-confirm="{% if resolution %}Publishing will reopen this discussion. Continue?{% endif %}">
+                  <i data-lucide="send" class="w-3 h-3"></i> Publish
+                </button>
+              </li>
+              {% endif %}
+              {% if user_can_edit %}
+              <li>
+                <button @click="editing = !editing; document.activeElement.blur(); $nextTick(() => { lucide.createIcons(); if (typeof initTinyMCE === 'function') initTinyMCE($el.closest('.card')); })">
+                  <i data-lucide="pencil" class="w-3 h-3"></i> Edit
+                </button>
+              </li>
+              {% endif %}
+              {% if can_moderate or post.author_id == user.pk %}
+              <li>
+                <button hx-post="{% url 'posts:post_delete' space_id=space.pk post_id=post.pk %}"
+                        hx-target="#conversation-panel" hx-swap="innerHTML"
+                        hx-confirm="Delete this post?" class="text-error">
+                  <i data-lucide="trash-2" class="w-3 h-3"></i> Delete
+                </button>
+              </li>
+              {% endif %}
+              {% if can_reorganise and all_discussions %}
+              <li>
+                <button @click="document.getElementById('moveDialog-{{ post.pk }}').showModal(); lucide.createIcons({ node: document.getElementById('moveDialog-{{ post.pk }}') }); $el.closest('.dropdown').querySelector('[tabindex]').blur()">
+                  <i data-lucide="move" class="w-3 h-3"></i> Move
+                </button>
+              </li>
+              {% endif %}
+              {% if not post.is_draft and post|is_edited %}
+              <li>
+                <button @click="if (!revisionsLoaded) { revisionsLoaded = true; htmx.ajax('GET', '{% url 'posts:post_revisions' space_id=space.pk post_id=post.pk %}', {target: '#revisions-{{ post.pk }}', swap: 'innerHTML'}) }; document.getElementById('revisionsDialog-{{ post.pk }}').showModal(); document.activeElement.blur()">
+                  <i data-lucide="history" class="w-3 h-3"></i> History
+                </button>
+              </li>
+              {% endif %}
+            </ul>
+          </div>
+          {% endif %}
+        {% endif %}
+      </div>
+    </div>
+    <div x-show="!editing" class="prose prose-sm max-w-none">{{ post.content|sanitize_html }}</div>
+    {% if not post.is_draft and post|is_edited %}
+    <dialog id="revisionsDialog-{{ post.pk }}" class="modal">
+      <div class="modal-box">
+        <form method="dialog">
+          <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2" aria-label="Close">✕</button>
+        </form>
+        <h3 class="text-lg font-bold mb-4">Edit history</h3>
+        <div id="revisions-{{ post.pk }}">
+          <span class="loading loading-spinner loading-sm"></span>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+    {% endif %}
+    <form x-show="editing" x-cloak
+          hx-post="{% url 'posts:post_edit' space_id=space.pk post_id=post.pk %}"
+          hx-target="#conversation-panel"
+          hx-swap="innerHTML"
+          class="space-y-2">
+      {% csrf_token %}
+      {% if post.is_draft and resolution %}
+      <div class="alert alert-warning text-sm">
+        <i data-lucide="alert-triangle" class="w-4 h-4"></i>
+        <span>Publishing this draft will reopen the discussion.</span>
+      </div>
+      {% endif %}
+      <textarea name="content" class="tinymce-editor" data-upload-url="{% url 'posts:image_upload' space_id=space.pk %}">{{ post.content }}</textarea>
+      <div class="flex gap-2">
+        {% if post.is_draft %}
+        <button type="submit" name="publish" value="true" class="btn btn-primary btn-xs">Publish</button>
+        <button type="submit" name="save_draft" value="true" class="btn btn-ghost btn-xs">Save draft</button>
+        {% else %}
+        <button type="submit" class="btn btn-primary btn-xs">Save</button>
+        {% endif %}
+        <button type="button" @click="editing = false" class="btn btn-ghost btn-xs">Cancel</button>
+      </div>
+    </form>
+    <div class="flex items-center gap-3 mt-2">
+      {% if post.is_draft %}
+      <span data-role="draft-badge" class="badge badge-warning badge-xs">Draft</span>
+      {% endif %}
+      {% if can_react and not post.is_draft %}
+        {% include "reactions/reaction_buttons.html" with post=post space=space user_reaction=user_reaction_type reaction_counts=reaction_counts %}
+      {% endif %}
+      {% if can_shape and space.is_active and not post.is_draft %}
+      <div class="ml-auto" x-show="!editing">
+        <form hx-post="{% url 'posts:post_promote' space_id=space.pk post_id=post.pk %}"
+              hx-target="#conversation-panel"
+              hx-swap="innerHTML"
+              hx-confirm="Create a new discussion from this post?"
+              class="inline">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-ghost btn-xs gap-1">
+            <i data-lucide="message-square-plus" class="w-3.5 h-3.5"></i> Discuss
+          </button>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if can_reorganise and all_discussions %}
+  <dialog id="moveDialog-{{ post.pk }}" class="modal"
+          x-data="{
+            step: 1,
+            selectedDiscussion: '',
+            expanded: new Set(),
+            toggle(id) { if (this.expanded.has(id)) this.expanded.delete(id); else this.expanded.add(id); },
+            isExpanded(id) { return this.expanded.has(id); },
+            hasChildren(id) {
+              return document.querySelectorAll('#move-tree-{{ post.pk }} [data-parent-id=\'' + id + '\']').length > 0;
+            }
+          }"
+          @close="step = 1; selectedDiscussion = ''; expanded = new Set()"
+          x-ref="moveDialog">
+    <div class="modal-box max-w-sm" @click.stop>
+      <h3 class="font-bold text-sm mb-3">Move post to…</h3>
+      <form hx-post="{% url 'posts:post_move' space_id=space.pk post_id=post.pk %}"
+            hx-target="#conversation-panel"
+            hx-swap="innerHTML"
+            @htmx:afterRequest="$refs.moveDialog.close()">
+        {% csrf_token %}
+
+        <div x-show="step === 1">
+          <div id="move-tree-{{ post.pk }}" class="max-h-72 overflow-y-auto">
+            {% for d in all_discussions %}
+            {% with pid=d.parent_id_str %}
+            <div data-parent-id="{{ pid }}"
+                 style="padding-left: {{ d.level }}rem"
+                 {% if d.level > 0 %}x-show="isExpanded('{{ pid }}')"{% endif %}
+                 class="tree-node flex items-center gap-0.5 py-0.5">
+              {% if d.level > 0 %}
+              <button type="button"
+                      x-show="hasChildren('{{ d.pk }}')"
+                      @click.stop="toggle('{{ d.pk }}')"
+                      class="btn btn-ghost btn-xs btn-square flex-shrink-0">
+                <i :data-lucide="isExpanded('{{ d.pk }}') ? 'chevron-down' : 'chevron-right'" class="w-3 h-3"></i>
+              </button>
+              <span x-show="!hasChildren('{{ d.pk }}')" class="w-4 flex-shrink-0"></span>
+              {% else %}
+              <button type="button"
+                      @click.stop="toggle('{{ d.pk }}')"
+                      class="btn btn-ghost btn-xs btn-square flex-shrink-0">
+                <i :data-lucide="isExpanded('{{ d.pk }}') ? 'chevron-down' : 'chevron-right'" class="w-3 h-3"></i>
+              </button>
+              {% endif %}
+              <button type="button"
+                      @click="selectedDiscussion = '{{ d.pk }}'"
+                      :class="selectedDiscussion === '{{ d.pk }}' ? 'bg-primary/10 font-semibold' : ''"
+                      class="btn btn-ghost btn-sm h-auto min-h-0 flex-1 min-w-0 justify-between rounded-lg px-2 py-1 text-sm normal-case text-left">
+                <span class="truncate">{{ d.label|default:"Untitled" }}</span>
+                <span class="flex items-center gap-0.5 text-xs text-base-content/50 flex-shrink-0">
+                  <i data-lucide="message-square" class="w-3 h-3"></i>{{ d.numchild }}
+                </span>
+              </button>
+            </div>
+            {% endwith %}
+            {% endfor %}
+          </div>
+          <input type="hidden" name="target_discussion_id" :value="selectedDiscussion">
+          <div class="modal-action">
+            <button type="button" class="btn btn-primary btn-sm"
+                    :disabled="!selectedDiscussion"
+                    @click="step = 2; htmx.ajax('GET', '{% url 'posts:post_move_positions' space_id=space.pk post_id=post.pk %}' + '?discussion_id=' + selectedDiscussion, {target: '#move-positions-{{ post.pk }}', swap: 'innerHTML'})">
+              Next
+            </button>
+            <button type="button" class="btn btn-ghost btn-sm" @click="$refs.moveDialog.close()">Cancel</button>
+          </div>
+        </div>
+
+        <div x-show="step === 2" x-cloak>
+          <h3 class="font-bold text-sm mb-2">Select position</h3>
+          <div id="move-positions-{{ post.pk }}">
+            <span class="loading loading-spinner loading-xs"></span>
+          </div>
+          <div class="modal-action">
+            <button type="button" class="btn btn-ghost btn-sm" @click="step = 1">Back</button>
+            <button type="submit" class="btn btn-primary btn-sm">Move</button>
+            <button type="button" class="btn btn-ghost btn-sm" @click="$refs.moveDialog.close()">Cancel</button>
+          </div>
+        </div>
+
+      </form>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  </dialog>
+  {% endif %}
+</div>

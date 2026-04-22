@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import datetime
+
 import pytest
-from django.http import Http404
+from django.utils import timezone
 
 from apps.spaces import services as space_services
 from apps.spaces.models import Role, Space, SpaceParticipant
@@ -34,6 +36,7 @@ class TestCreateSpace:
         space = space_services.create_space(title="Test", created_by=user)
         participant = SpaceParticipant.objects.get(space=space, user=user)
         assert participant.role.label == "Facilitator"
+        assert participant.created_by == user
 
     def test_creates_root_node(self):
         user = UserFactory()
@@ -71,18 +74,20 @@ class TestLifecycle:
         space = space_services.open_space(space=space)
         assert space.lifecycle == Space.Lifecycle.OPEN
 
-    def test_close_space(self):
-        user = UserFactory()
-        space = space_services.create_space(title="Test", created_by=user)
-        space_services.open_space(space=space)
-        space = space_services.close_space(space=space)
-        assert space.lifecycle == Space.Lifecycle.CLOSED
 
-    def test_archive_space(self):
+@pytest.mark.django_db
+class TestTouchSpace:
+    def test_updates_timestamp_on_instance_and_database(self):
         user = UserFactory()
         space = space_services.create_space(title="Test", created_by=user)
-        space = space_services.archive_space(space=space)
-        assert space.lifecycle == Space.Lifecycle.ARCHIVED
+        original_updated_at = space.updated_at
+
+        space_services.touch_space(space=space)
+        space.refresh_from_db()
+
+        assert space.updated_at is not None
+        assert original_updated_at is not None
+        assert space.updated_at > original_updated_at
 
 
 @pytest.mark.django_db
@@ -95,6 +100,7 @@ class TestJoinLeave:
         participant = space_services.join_space(space=space, user=joiner)
         assert participant.user == joiner
         assert participant.role.label == "Member"
+        assert participant.created_by == joiner
 
     def test_join_with_custom_role(self):
         user = UserFactory()
@@ -119,22 +125,10 @@ class TestJoinLeave:
         joiner = UserFactory()
         space = space_services.create_space(title="Test", created_by=user)
         space_services.open_space(space=space)
-        space_services.close_space(space=space)
-        with pytest.raises(ValueError, match="not open"):
+        space.lifecycle = Space.Lifecycle.CLOSED
+        space.save(update_fields=["lifecycle"])
+        with pytest.raises(ValueError, match="not active"):
             space_services.join_space(space=space, user=joiner)
-
-    def test_get_participant(self):
-        user = UserFactory()
-        space = space_services.create_space(title="Test", created_by=user)
-        participant = space_services.get_participant(space=space, user=user)
-        assert participant is not None
-        assert participant.user == user
-
-    def test_get_participant_returns_none_for_outsider(self):
-        user = UserFactory()
-        outsider = UserFactory()
-        space = space_services.create_space(title="Test", created_by=user)
-        assert space_services.get_participant(space=space, user=outsider) is None
 
     def test_leave_not_participant_silent(self):
         user = UserFactory()
@@ -146,7 +140,20 @@ class TestJoinLeave:
         user = UserFactory()
         joiner = UserFactory()
         space = space_services.create_space(title="Test", created_by=user)
-        with pytest.raises(ValueError, match="not open"):
+        with pytest.raises(ValueError, match="not active"):
+            space_services.join_space(space=space, user=joiner)
+
+    def test_join_future_space_fails(self):
+        user = UserFactory()
+        joiner = UserFactory()
+        space = space_services.create_space(
+            title="Test",
+            created_by=user,
+            starts_at=timezone.now() + datetime.timedelta(hours=1),
+        )
+        space_services.open_space(space=space)
+
+        with pytest.raises(ValueError, match="not active"):
             space_services.join_space(space=space, user=joiner)
 
     def test_update_participant_role(self):
@@ -158,12 +165,6 @@ class TestJoinLeave:
         observer = Role.objects.get(space=space, label="Observer")
         updated = space_services.update_participant_role(participant=participant, role=observer)
         assert updated.role.label == "Observer"
-
-    def test_get_participant_not_found(self):
-        user = UserFactory()
-        outsider = UserFactory()
-        space = space_services.create_space(title="Test", created_by=user)
-        assert space_services.get_participant(space=space, user=outsider) is None
 
 
 @pytest.mark.django_db
@@ -184,21 +185,22 @@ class TestCreateRole:
     def test_creates_role(self):
         user = UserFactory()
         space = space_services.create_space(title="Test", created_by=user)
-        role = space_services.create_role(space=space, label="Reviewer")
+        role = space_services.create_role(space=space, label="Reviewer", created_by=user)
         assert role.label == "Reviewer"
         assert role.space == space
+        assert role.created_by == user
 
     def test_empty_label_raises(self):
         user = UserFactory()
         space = space_services.create_space(title="Test", created_by=user)
         with pytest.raises(ValueError, match="required"):
-            space_services.create_role(space=space, label="")
+            space_services.create_role(space=space, label="", created_by=user)
 
     def test_duplicate_label_raises(self):
         user = UserFactory()
         space = space_services.create_space(title="Test", created_by=user)
         with pytest.raises(ValueError, match="already exists"):
-            space_services.create_role(space=space, label="Facilitator")
+            space_services.create_role(space=space, label="Facilitator", created_by=user)
 
 
 @pytest.mark.django_db
@@ -206,21 +208,21 @@ class TestUpdateRoleService:
     def test_rename_role(self):
         user = UserFactory()
         space = space_services.create_space(title="Test", created_by=user)
-        role = space_services.create_role(space=space, label="Reviewer")
+        role = space_services.create_role(space=space, label="Reviewer", created_by=user)
         updated = space_services.update_role(role=role, label="Editor")
         assert updated.label == "Editor"
 
     def test_duplicate_rename_raises(self):
         user = UserFactory()
         space = space_services.create_space(title="Test", created_by=user)
-        role = space_services.create_role(space=space, label="Reviewer")
+        role = space_services.create_role(space=space, label="Reviewer", created_by=user)
         with pytest.raises(ValueError, match="already exists"):
             space_services.update_role(role=role, label="Facilitator")
 
     def test_update_permissions(self):
         user = UserFactory()
         space = space_services.create_space(title="Test", created_by=user)
-        role = space_services.create_role(space=space, label="Reviewer")
+        role = space_services.create_role(space=space, label="Reviewer", created_by=user)
         updated = space_services.update_role(
             role=role,
             permissions={"can_post": True, "can_resolve": True, "can_view_drafts": True},
@@ -242,7 +244,7 @@ class TestDeleteRole:
     def test_delete_role(self):
         user = UserFactory()
         space = space_services.create_space(title="Test", created_by=user)
-        role = space_services.create_role(space=space, label="Temp")
+        role = space_services.create_role(space=space, label="Temp", created_by=user)
         label = space_services.delete_role(role=role)
         assert label == "Temp"
         assert not Role.objects.filter(pk=role.pk).exists()
@@ -274,25 +276,6 @@ class TestSetDefaultRole:
         space_services.set_default_role(space=space, role=observer_role)
         space.refresh_from_db()
         assert space.default_role == observer_role
-
-
-@pytest.mark.django_db
-class TestGetActiveSpace:
-    def test_returns_active_space(self):
-        user = UserFactory()
-        space = space_services.create_space(title="Test", created_by=user)
-        space_services.open_space(space=space)
-
-        result = space_services.get_active_space(str(space.pk))
-
-        assert result.pk == space.pk
-
-    def test_raises_404_for_inactive_space(self):
-        user = UserFactory()
-        space = space_services.create_space(title="Test", created_by=user)
-
-        with pytest.raises(Http404, match="no longer active"):
-            space_services.get_active_space(str(space.pk))
 
 
 @pytest.mark.django_db

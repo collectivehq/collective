@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import pytest
+from django.core.cache import cache
 from django.test import Client
+from django.test.utils import override_settings
 from django.urls import reverse
 
-from apps.nodes import services as node_services
-from apps.nodes.tests.factories import NodeFactory
+from apps.discussions import services as discussion_services
+from apps.discussions.tests.factories import DiscussionFactory
+from apps.posts import services as post_services
 from apps.spaces import services as space_services
 from apps.spaces.models import Space
-from apps.subscriptions import services as sub_services
 from apps.subscriptions.models import Notification
+from apps.subscriptions.subscription_services import subscribe
 from apps.users.tests.factories import UserFactory
 
 
@@ -21,48 +24,80 @@ def participant_client():
     space = Space.objects.get(pk=space.pk)
     joiner = UserFactory()
     space_services.join_space(space=space, user=joiner)
-    node = NodeFactory(space=space)
+    discussion = DiscussionFactory(space=space)
     c = Client()
     c.force_login(joiner)
-    return c, space, node
+    return c, space, discussion
 
 
 @pytest.mark.django_db
 class TestToggleSubscriptionView:
     def test_subscribe(self, participant_client):
-        c, space, node = participant_client
+        c, space, discussion = participant_client
         response = c.post(
-            reverse("subscriptions:toggle_subscription", kwargs={"space_id": space.pk, "node_id": node.pk}),
+            reverse(
+                "subscriptions:toggle_subscription",
+                kwargs={"space_id": space.pk, "discussion_id": discussion.pk},
+            ),
         )
         assert response.status_code == 200
 
     def test_unsubscribe(self, participant_client):
-        c, space, node = participant_client
+        c, space, discussion = participant_client
         # Subscribe first
-        c.post(reverse("subscriptions:toggle_subscription", kwargs={"space_id": space.pk, "node_id": node.pk}))
+        c.post(
+            reverse(
+                "subscriptions:toggle_subscription",
+                kwargs={"space_id": space.pk, "discussion_id": discussion.pk},
+            )
+        )
         # Unsubscribe
         response = c.post(
-            reverse("subscriptions:toggle_subscription", kwargs={"space_id": space.pk, "node_id": node.pk}),
+            reverse(
+                "subscriptions:toggle_subscription",
+                kwargs={"space_id": space.pk, "discussion_id": discussion.pk},
+            ),
         )
         assert response.status_code == 200
 
     def test_requires_login(self, participant_client):
-        _, space, node = participant_client
+        _, space, discussion = participant_client
         anon = Client()
         response = anon.post(
-            reverse("subscriptions:toggle_subscription", kwargs={"space_id": space.pk, "node_id": node.pk}),
+            reverse(
+                "subscriptions:toggle_subscription",
+                kwargs={"space_id": space.pk, "discussion_id": discussion.pk},
+            ),
         )
         assert response.status_code == 302
 
     def test_non_participant_denied(self, participant_client):
-        _, space, node = participant_client
+        _, space, discussion = participant_client
         outsider = UserFactory()
         c = Client()
         c.force_login(outsider)
         response = c.post(
-            reverse("subscriptions:toggle_subscription", kwargs={"space_id": space.pk, "node_id": node.pk}),
+            reverse(
+                "subscriptions:toggle_subscription",
+                kwargs={"space_id": space.pk, "discussion_id": discussion.pk},
+            ),
         )
         assert response.status_code == 403
+
+    @override_settings(TOGGLE_RATE_LIMIT_MAX_ATTEMPTS=1, TOGGLE_RATE_LIMIT_WINDOW_SECONDS=60)
+    def test_rate_limits_toggle_subscription(self, participant_client):
+        cache.clear()
+        c, space, discussion = participant_client
+        url = reverse(
+            "subscriptions:toggle_subscription",
+            kwargs={"space_id": space.pk, "discussion_id": discussion.pk},
+        )
+
+        first = c.post(url)
+        second = c.post(url)
+
+        assert first.status_code == 200
+        assert second.status_code == 429
 
 
 @pytest.fixture
@@ -73,11 +108,11 @@ def notifications_client():
     space = Space.objects.get(pk=space.pk)
     author = UserFactory()
     space_services.join_space(space=space, user=author)
-    subscriber = space_services.get_participant(space=space, user=creator)
+    subscriber = space.participants.select_related("role").filter(user=creator).first()
     assert subscriber is not None
     root = space.root_discussion
-    sub_services.subscribe(participant=subscriber, node=root)
-    node_services.create_post(discussion=root, author=author, content="Hello there")
+    subscribe(user=subscriber.user, discussion=root)
+    post_services.create_post(discussion=root, author=author, content="Hello there")
     c = Client()
     c.force_login(creator)
     return c, creator, space, root
@@ -92,6 +127,46 @@ class TestNotificationsCenterView:
 
         assert response.status_code == 200
         assert b"posted in" in response.content
+
+    def test_resolution_notification_title_is_human_readable(self):
+        creator = UserFactory()
+        resolver = UserFactory()
+        space = space_services.create_space(title="Test", created_by=creator)
+        space_services.open_space(space=space)
+        subscriber = space.participants.select_related("role").filter(user=creator).first()
+        assert subscriber is not None
+        space_services.join_space(space=space, user=resolver)
+        root = space.root_discussion
+        subscribe(user=subscriber.user, discussion=root)
+        discussion_services.resolve_discussion(discussion=root, resolution_type="accept", resolved_by=resolver)
+
+        c = Client()
+        c.force_login(creator)
+        response = c.get(reverse("subscriptions:notifications"))
+
+        assert response.status_code == 200
+        assert b"accepted" in response.content
+
+    def test_post_notification_preview_uses_original_content_after_edit(self):
+        creator = UserFactory()
+        author = UserFactory()
+        space = space_services.create_space(title="Test", created_by=creator)
+        space_services.open_space(space=space)
+        subscriber = space.participants.select_related("role").filter(user=creator).first()
+        assert subscriber is not None
+        space_services.join_space(space=space, user=author)
+        root = space.root_discussion
+        subscribe(user=subscriber.user, discussion=root)
+        post = post_services.create_post(discussion=root, author=author, content="Original body")
+        post_services.update_post(post=post, content="Edited body", actor=author)
+
+        c = Client()
+        c.force_login(creator)
+        response = c.get(reverse("subscriptions:notifications"))
+
+        assert response.status_code == 200
+        assert b"Original body" in response.content
+        assert b"Edited body" not in response.content
 
     def test_open_marks_notification_read(self, notifications_client):
         c, _, space, root = notifications_client
