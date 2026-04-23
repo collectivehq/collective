@@ -6,6 +6,8 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY assets/ assets/
+COPY apps/ apps/
+COPY templates/ templates/
 RUN npm run build
 
 
