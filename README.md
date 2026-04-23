@@ -122,6 +122,8 @@ If you rebuild `static/app.css`, run `python manage.py collectstatic --noinput` 
 
 The repository includes a Dockerfile and entrypoint script for running the Django app in a container. The image expects PostgreSQL connection settings and serves the application with Gunicorn.
 
+When running behind a TLS-terminating proxy or load balancer, production trusts `X-Forwarded-Proto` and `X-Forwarded-Host` by default so Django can detect the original HTTPS request correctly. Set `USE_X_FORWARDED_PROTO=false` or `USE_X_FORWARDED_HOST=false` if your deployment does not provide those headers safely.
+
 ### SMTP
 
 Production uses Django's SMTP backend. Configure delivery with environment variables like these:

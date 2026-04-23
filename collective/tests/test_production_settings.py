@@ -12,7 +12,7 @@ def _load_production_settings(monkeypatch: pytest.MonkeyPatch, **env: str) -> Mo
     monkeypatch.setenv("DJANGO_SECRET_KEY", "test-secret")
     monkeypatch.setenv("DJANGO_ALLOWED_HOSTS", "example.com")
 
-    email_env_vars = (
+    managed_env_vars = (
         "EMAIL_HOST",
         "EMAIL_PORT",
         "EMAIL_HOST_USER",
@@ -22,8 +22,10 @@ def _load_production_settings(monkeypatch: pytest.MonkeyPatch, **env: str) -> Mo
         "EMAIL_TIMEOUT",
         "DEFAULT_FROM_EMAIL",
         "SERVER_EMAIL",
+        "USE_X_FORWARDED_HOST",
+        "USE_X_FORWARDED_PROTO",
     )
-    for key in email_env_vars:
+    for key in managed_env_vars:
         monkeypatch.delenv(key, raising=False)
 
     for key, value in env.items():
@@ -74,3 +76,21 @@ class TestProductionEmailSettings:
                 EMAIL_USE_TLS="true",
                 EMAIL_USE_SSL="true",
             )
+
+
+class TestProductionProxySettings:
+    def test_trusts_forwarded_proto_and_host_by_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        settings_module = _load_production_settings(monkeypatch)
+
+        assert settings_module.USE_X_FORWARDED_HOST is True
+        assert settings_module.SECURE_PROXY_SSL_HEADER == ("HTTP_X_FORWARDED_PROTO", "https")
+
+    def test_can_disable_forwarded_proto_trust(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        settings_module = _load_production_settings(
+            monkeypatch,
+            USE_X_FORWARDED_PROTO="false",
+            USE_X_FORWARDED_HOST="false",
+        )
+
+        assert settings_module.USE_X_FORWARDED_HOST is False
+        assert settings_module.SECURE_PROXY_SSL_HEADER is None
