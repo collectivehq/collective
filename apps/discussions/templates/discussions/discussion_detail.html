@@ -5,7 +5,7 @@
       <div x-show="!editingTitle">
         <h2 class="text-xl font-bold">{{ discussion.label|default:"Untitled" }}</h2>
       </div>
-      {% if can_shape %}
+      {% if can_rename_discussion %}
       <form x-show="editingTitle" x-cloak
             hx-post="{% url 'discussions:discussion_edit' space_id=space.pk discussion_id=discussion.pk %}"
             hx-target="#conversation-panel"
@@ -29,7 +29,7 @@
         <span class="badge {% if resolution == 'accept' %}badge-success{% elif resolution == 'reject' %}badge-error{% else %}badge-warning{% endif %}">
           {{ resolution|resolution_label }}
         </span>
-        {% if can_resolve %}
+        {% if can_reopen %}
         <button type="button"
                 class="btn btn-ghost btn-xs gap-1"
                 @click="document.getElementById('reopenDiscussionDialog-{{ discussion.pk }}').showModal()">
@@ -37,7 +37,7 @@
         </button>
         {% endif %}
       {% else %}
-        {% if participant.role.can_opine and space.opinion_types and space.is_active %}
+        {% if can_opine %}
         {% include "opinions/opinion_buttons.html#opinion_actions" with space=space discussion=discussion opinions=opinions user_opinion=user_opinion %}
         {% endif %}
         {% if can_resolve %}
@@ -68,19 +68,20 @@
         </div>
         {% endif %}
       {% endif %}
-      {% if can_shape or participant %}
+      {% if has_discussion_menu_actions %}
       <div class="dropdown dropdown-end">
         <label tabindex="0" class="btn btn-ghost btn-xs btn-square">
           <i data-lucide="ellipsis-vertical" class="w-4 h-4"></i>
         </label>
         <ul tabindex="0" class="dropdown-content z-10 menu menu-sm p-1 shadow-lg bg-base-100 rounded-box w-48">
-          {% if can_shape %}
+          {% if can_rename_discussion %}
           <li>
             <button @click="editingTitle = !editingTitle; document.activeElement.blur()" x-show="!editingTitle">
               <i data-lucide="pencil" class="w-3.5 h-3.5"></i> Edit title
             </button>
           </li>
-          {% if not discussion.is_root %}
+          {% endif %}
+          {% if can_delete_discussion and not discussion.is_root %}
           <li>
             <button hx-post="{% url 'discussions:discussion_delete' space_id=space.pk discussion_id=discussion.pk %}"
                     hx-target="#tree-panel" hx-swap="innerHTML"
@@ -90,8 +91,7 @@
             </button>
           </li>
           {% endif %}
-          {% endif %}
-          {% if participant %}
+          {% if can_toggle_subscription %}
           <li>
             {% include "subscriptions/subscription_button.html" with space=space discussion=discussion subscribed=is_subscribed dropdown=True %}
           </li>
@@ -102,7 +102,7 @@
     </div>
   </div>
 
-  {% if resolution and can_resolve %}
+  {% if resolution and can_reopen %}
   <dialog id="reopenDiscussionDialog-{{ discussion.pk }}" class="modal">
     <div class="modal-box max-w-md">
       <h3 class="text-lg font-semibold">Reopen discussion?</h3>
@@ -156,9 +156,9 @@
             </span>
             <div class="flex-1">
               {% if child.is_post %}
-                {% include "posts/post_card.html" with post=child.post user_can_edit=child.user_can_edit user_can_react=child.user_can_react user_reaction_type=child.user_reaction_type reaction_counts=child.reaction_counts %}
+                {% include "posts/post_card.html" with post=child.post author_role_highlight_color=child.author_role_highlight_color user_can_edit=child.user_can_edit can_publish_draft=child.can_publish_draft user_can_react=child.user_can_react user_reaction_type=child.user_reaction_type reaction_counts=child.reaction_counts can_delete=child.can_delete can_move=child.can_move can_promote=child.can_promote can_view_history=child.can_view_history show_history=child.show_history show_actions=child.show_actions %}
               {% elif child.is_link %}
-                {% include "posts/link_card.html" with link=child.link link_preview_post=child.link_preview_post %}
+                {% include "posts/link_card.html" with link=child.link link_preview_post=child.link_preview_post can_delete=child.can_delete can_move=child.can_move show_actions=child.show_actions %}
               {% endif %}
             </div>
           </div>
@@ -166,12 +166,18 @@
       {% endfor %}
     </div>
 
-    {% if can_post %}
+    {% if can_submit_post_form %}
     <div class="mt-4">
-      {% if resolution %}
+      {% if resolution and can_post %}
       <div class="alert alert-warning mb-2 text-sm">
         <i data-lucide="alert-triangle" class="w-4 h-4"></i>
-        <span>This discussion is resolved. Posting will reopen it and notify the host.</span>
+        <span>
+          {% if can_reopen %}
+          This discussion is resolved. Posting will reopen it and notify the host.
+          {% else %}
+          This discussion is resolved. You can still post, but it will remain resolved.
+          {% endif %}
+        </span>
       </div>
       {% endif %}
       <form hx-post="{% url 'posts:post_create' space_id=space.pk discussion_id=discussion.pk %}"
@@ -179,14 +185,16 @@
             hx-swap="innerHTML"
             class="space-y-2">
         {% csrf_token %}
-        <textarea name="content" class="tinymce-editor" data-upload-url="{% url 'posts:image_upload' space_id=space.pk %}" placeholder="Write a post…"></textarea>
+        <textarea name="content" class="tinymce-editor" {% if can_upload_images %}data-upload-url="{% url 'posts:image_upload' space_id=space.pk %}"{% endif %} placeholder="Write a post…"></textarea>
         <div class="flex gap-2">
-          {% if resolution %}
-          <button type="submit" class="btn btn-primary btn-sm">Post & Reopen</button>
-          {% else %}
+          {% if can_post and resolution %}
+          <button type="submit" class="btn btn-primary btn-sm">{% if can_reopen %}Post & Reopen{% else %}Post{% endif %}</button>
+          {% elif can_post %}
           <button type="submit" class="btn btn-primary btn-sm">Post</button>
           {% endif %}
+          {% if can_create_draft %}
           <button type="submit" name="save_draft" value="true" class="btn btn-ghost btn-sm">Save draft</button>
+          {% endif %}
         </div>
       </form>
     </div>
@@ -216,7 +224,7 @@
     {% endfor %}
   </div>
   {% endif %}
-  {% if can_shape and space.is_active %}
+  {% if can_create_discussion %}
   <div class="mb-4">
     {% include "discussions/_add_discussion_form.html" with parent_id=discussion.pk %}
   </div>

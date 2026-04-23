@@ -12,6 +12,7 @@ urlpatterns = [
     path("<uuid:space_id>/", views.space_detail, name="detail"),
     path("<uuid:space_id>/join/", views.space_join, name="join"),
     path("<uuid:space_id>/settings/", views.space_settings, name="settings"),
+    path("<uuid:space_id>/lifecycle/", views.space_lifecycle_update, name="lifecycle_update"),
     path("<uuid:space_id>/participants/", views.space_participants, name="participants"),
     path("<uuid:space_id>/participants/add/", views.participant_add, name="participant_add"),
     path(

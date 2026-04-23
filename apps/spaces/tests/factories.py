@@ -24,6 +24,7 @@ class SpaceFactory(factory.django.DjangoModelFactory):
             description=kwargs.pop("description"),
             created_by=kwargs.pop("created_by"),
             template_slug=kwargs.pop("template_slug", ""),
+            is_public=kwargs.pop("is_public", True),
             opinion_types=kwargs.pop("opinion_types", None),
             reaction_types=kwargs.pop("reaction_types", None),
             starts_at=kwargs.pop("starts_at", None),
@@ -31,7 +32,7 @@ class SpaceFactory(factory.django.DjangoModelFactory):
         )
 
         update_fields: list[str] = []
-        for field_name in ("lifecycle", "edit_window_minutes", "deleted_at", "updated_at"):
+        for field_name in ("lifecycle", "edit_window_minutes", "deleted_at", "updated_at", "is_public"):
             if field_name in kwargs:
                 setattr(space, field_name, kwargs.pop(field_name))
                 update_fields.append(field_name)

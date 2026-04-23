@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError, models
 
 from apps.core.models import BaseModel, CRUDModel
@@ -46,6 +47,15 @@ class TestSpace:
         assert spaces[0] == s2  # most recent first
         assert spaces[1] == s1
 
+    def test_default_role_must_belong_to_same_space(self):
+        space = SpaceFactory()
+        other_space = SpaceFactory()
+        other_role = other_space.roles.get(label="Observer")
+        space.default_role = other_role
+
+        with pytest.raises(ValidationError, match="Default role must belong to this space"):
+            space.full_clean()
+
 
 @pytest.mark.django_db
 class TestRole:
@@ -67,10 +77,15 @@ class TestRole:
 
     def test_default_permissions(self):
         role = RoleFactory()
+        assert role.post_highlight_color == ""
         assert role.can_post is True
+        assert role.can_edit_others_post is False
+        assert role.can_archive_space is False
+        assert role.can_unarchive_space is False
+        assert role.can_modify_closed_space is False
         assert role.can_view_drafts is False
-        assert role.can_shape_tree is False
-        assert role.can_moderate is False
+        assert role.can_create_discussion is False
+        assert role.can_moderate_content is False
 
     def test_permission_labels_matches_role_fields(self):
         permission_fields = {
@@ -102,8 +117,25 @@ class TestSpaceParticipant:
         with pytest.raises(IntegrityError):
             SpaceParticipant.objects.create(space=space, user=user, role=role, created_by=user)
 
+    def test_role_must_belong_to_same_space(self):
+        user = UserFactory()
+        space = SpaceFactory()
+        other_role = RoleFactory()
+        participant = SpaceParticipant(space=space, user=user, role=other_role, created_by=user)
+
+        with pytest.raises(ValidationError, match="Role must belong to the participant's space"):
+            participant.full_clean()
+
 
 @pytest.mark.django_db
 class TestSpaceInvite:
     def test_inherits_base_model(self):
         assert issubclass(SpaceInvite, BaseModel)
+
+    def test_role_must_belong_to_same_space(self):
+        space = SpaceFactory()
+        other_role = RoleFactory()
+        invite = SpaceInvite(space=space, role=other_role, created_by=space.created_by)
+
+        with pytest.raises(ValidationError, match="Role must belong to the invite's space"):
+            invite.full_clean()

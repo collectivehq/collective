@@ -10,20 +10,21 @@ from django.views.decorators.http import require_POST
 from apps.core.rate_limits import allow_toggle_request
 from apps.core.utils import get_user
 from apps.discussions.models import Discussion
-from apps.spaces.request_context import get_active_space_request_context
+from apps.spaces.request_context import get_space_request_context
 from apps.subscriptions.models import Notification
 from apps.subscriptions.notification_services import (
     get_notifications_for_user,
     mark_all_notifications_read,
     mark_notification_read,
 )
+from apps.subscriptions.permissions import can_toggle_subscription
 from apps.subscriptions.subscription_services import is_subscribed, subscribe, unsubscribe
 
 
 @require_POST
 @login_required
 def toggle_subscription(request: HttpRequest, space_id: str, discussion_id: str) -> HttpResponse:
-    context = get_active_space_request_context(request, space_id)
+    context = get_space_request_context(request, space_id)
     space = context.space
     user = context.user
     participant = context.participant
@@ -33,7 +34,7 @@ def toggle_subscription(request: HttpRequest, space_id: str, discussion_id: str)
         space=space,
         deleted_at__isnull=True,
     )
-    if participant is None:
+    if not can_toggle_subscription(user, discussion, participant=participant):
         raise PermissionDenied
 
     if not allow_toggle_request(request=request, action="subscription", space_id=str(space.pk)):

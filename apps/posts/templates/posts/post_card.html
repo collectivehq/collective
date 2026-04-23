@@ -1,5 +1,6 @@
 {% load post_tags core_tags %}
 <div class="card bg-base-100 shadow-sm mb-2"
+     {% if author_role_highlight_color %}style="border: 1px solid color-mix(in oklab, {{ author_role_highlight_color }} 35%, transparent); background: linear-gradient(180deg, color-mix(in oklab, {{ author_role_highlight_color }} 11%, white) 0%, var(--color-base-100) 100%);"{% endif %}
      x-data="{ editing: false, revisionsLoaded: false }">
   <div class="card-body py-3 px-4">
     <div class="flex items-center justify-between text-xs text-base-content/60 mb-1">
@@ -11,16 +12,15 @@
       </div>
       <div class="flex items-center gap-2">
         <span>{{ post.created_at|timesince }} ago</span>
-        {% if not post.is_draft and post|is_edited %}<button class="btn btn-ghost btn-xs h-auto min-h-0 px-1 text-base-content/50 hover:text-base-content/70"
+        {% if show_history %}<button class="btn btn-ghost btn-xs h-auto min-h-0 px-1 text-base-content/50 hover:text-base-content/70"
             @click="if (!revisionsLoaded) { revisionsLoaded = true; htmx.ajax('GET', '{% url 'posts:post_revisions' space_id=space.pk post_id=post.pk %}', {target: '#revisions-{{ post.pk }}', swap: 'innerHTML'}) }; document.getElementById('revisionsDialog-{{ post.pk }}').showModal()">edited</button>{% endif %}
-        {% if space.is_active %}
-          {% if user_can_edit or can_moderate or post.author_id == user.pk or can_reorganise and all_discussions or not post.is_draft and post|is_edited %}
+        {% if show_actions %}
           <div class="dropdown dropdown-end">
             <label tabindex="0" class="btn btn-ghost btn-xs btn-square">
               <i data-lucide="ellipsis-vertical" class="w-3.5 h-3.5"></i>
             </label>
             <ul tabindex="0" class="dropdown-content z-10 menu menu-sm p-1 shadow-lg bg-base-100 rounded-box w-40">
-              {% if post.is_draft and user_can_edit %}
+              {% if post.is_draft and can_publish_draft %}
               <li data-role="publish-draft-action">
                 <button hx-post="{% url 'posts:post_publish' space_id=space.pk post_id=post.pk %}"
                         hx-target="#conversation-panel"
@@ -37,7 +37,7 @@
                 </button>
               </li>
               {% endif %}
-              {% if can_moderate or post.author_id == user.pk %}
+              {% if can_delete %}
               <li>
                 <button hx-post="{% url 'posts:post_delete' space_id=space.pk post_id=post.pk %}"
                         hx-target="#conversation-panel" hx-swap="innerHTML"
@@ -46,14 +46,14 @@
                 </button>
               </li>
               {% endif %}
-              {% if can_reorganise and all_discussions %}
+              {% if can_move %}
               <li>
                 <button @click="document.getElementById('moveDialog-{{ post.pk }}').showModal(); lucide.createIcons({ node: document.getElementById('moveDialog-{{ post.pk }}') }); $el.closest('.dropdown').querySelector('[tabindex]').blur()">
                   <i data-lucide="move" class="w-3 h-3"></i> Move
                 </button>
               </li>
               {% endif %}
-              {% if not post.is_draft and post|is_edited %}
+              {% if show_history %}
               <li>
                 <button @click="if (!revisionsLoaded) { revisionsLoaded = true; htmx.ajax('GET', '{% url 'posts:post_revisions' space_id=space.pk post_id=post.pk %}', {target: '#revisions-{{ post.pk }}', swap: 'innerHTML'}) }; document.getElementById('revisionsDialog-{{ post.pk }}').showModal(); document.activeElement.blur()">
                   <i data-lucide="history" class="w-3 h-3"></i> History
@@ -62,12 +62,11 @@
               {% endif %}
             </ul>
           </div>
-          {% endif %}
         {% endif %}
       </div>
     </div>
     <div x-show="!editing" class="prose prose-sm max-w-none">{{ post.content|sanitize_html }}</div>
-    {% if not post.is_draft and post|is_edited %}
+    {% if show_history %}
     <dialog id="revisionsDialog-{{ post.pk }}" class="modal">
       <div class="modal-box">
         <form method="dialog">
@@ -93,10 +92,12 @@
         <span>Publishing this draft will reopen the discussion.</span>
       </div>
       {% endif %}
-      <textarea name="content" class="tinymce-editor" data-upload-url="{% url 'posts:image_upload' space_id=space.pk %}">{{ post.content }}</textarea>
+      <textarea name="content" class="tinymce-editor" {% if can_upload_images %}data-upload-url="{% url 'posts:image_upload' space_id=space.pk %}"{% endif %}>{{ post.content }}</textarea>
       <div class="flex gap-2">
         {% if post.is_draft %}
+        {% if can_publish_draft %}
         <button type="submit" name="publish" value="true" class="btn btn-primary btn-xs">Publish</button>
+        {% endif %}
         <button type="submit" name="save_draft" value="true" class="btn btn-ghost btn-xs">Save draft</button>
         {% else %}
         <button type="submit" class="btn btn-primary btn-xs">Save</button>
@@ -111,7 +112,7 @@
       {% if user_can_react and not post.is_draft %}
         {% include "reactions/reaction_buttons.html" with post=post space=space user_reaction=user_reaction_type reaction_counts=reaction_counts %}
       {% endif %}
-      {% if can_shape and space.is_active and not post.is_draft %}
+      {% if can_promote and not post.is_draft %}
       <div class="ml-auto" x-show="!editing">
         <form hx-post="{% url 'posts:post_promote' space_id=space.pk post_id=post.pk %}"
               hx-target="#conversation-panel"
@@ -128,7 +129,7 @@
     </div>
   </div>
 
-  {% if can_reorganise and all_discussions %}
+  {% if can_move %}
   <dialog id="moveDialog-{{ post.pk }}" class="modal"
           x-data="{
             step: 1,

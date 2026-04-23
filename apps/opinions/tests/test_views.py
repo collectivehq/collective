@@ -37,6 +37,20 @@ class TestCastOpinionView:
         )
         assert response.status_code == 403
 
+    def test_facilitator_can_toggle_opinion_in_closed_space(self, participant_client):
+        _, space, _, discussion = participant_client
+        c = Client()
+        c.force_login(space.created_by)
+        space.lifecycle = space.Lifecycle.CLOSED
+        space.save(update_fields=["lifecycle"])
+
+        response = c.post(
+            reverse("opinions:toggle_opinion", kwargs={"space_id": space.pk, "discussion_id": discussion.pk}),
+            {"type": "agree"},
+        )
+
+        assert response.status_code == 200
+
     def test_requires_login(self, participant_client):
         _, space, _, discussion = participant_client
         anon = Client()

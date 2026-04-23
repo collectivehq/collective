@@ -33,13 +33,25 @@ class RoleAdmin(admin.ModelAdmin):  # type: ignore[type-arg]
     list_display = (
         "label",
         "space",
+        "post_highlight_color",
         "can_post",
+        "can_edit_others_post",
+        "can_create_discussion",
         "can_view_drafts",
         "can_resolve",
-        "can_shape_tree",
         "can_reorganise",
+        "can_modify_closed_space",
+        "can_manage_participants",
     )
-    list_filter = ("can_post", "can_view_drafts", "can_resolve", "can_shape_tree")
+    list_filter = (
+        "can_post",
+        "can_edit_others_post",
+        "can_create_discussion",
+        "can_view_drafts",
+        "can_resolve",
+        "can_reorganise",
+        "can_modify_closed_space",
+    )
     list_select_related = ("space",)
     search_fields = ("label", "space__title")
     search_help_text = "Search by role label or space title."

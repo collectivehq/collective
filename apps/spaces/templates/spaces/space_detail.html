@@ -23,24 +23,18 @@
               hx-get="{% url 'discussions:discussion_detail' space_id=space.pk discussion_id=root_discussion.pk %}"
                hx-target="#conversation-panel"
                hx-swap="innerHTML"
+               @click="window.selectTreeNode && window.selectTreeNode('{{ root_discussion.pk }}')"
                class="hover:text-primary">{{ space.title }}</a>
             {% else %}
             {{ space.title }}
             {% endif %}
           </h2>
-          <div class="flex items-center gap-1">
-            <button @click="document.getElementById('aboutSpaceModal').showModal()"
-                    class="btn btn-ghost btn-xs btn-square flex items-center justify-center tooltip tooltip-bottom"
-                    data-tip="About this space">
-              <i data-lucide="info" class="w-3.5 h-3.5"></i>
+          {% if can_reorganise %}
+            <button @click="editingTree = !editingTree" class="btn btn-ghost btn-xs btn-square flex items-center justify-center tooltip tooltip-bottom"
+                    :class="editingTree ? 'btn-active' : ''" data-tip="Rearrange tree">
+              <i data-lucide="move" class="w-3.5 h-3.5"></i>
             </button>
-            {% if participant.role.can_shape_tree %}
-              <button @click="editingTree = !editingTree" class="btn btn-ghost btn-xs btn-square flex items-center justify-center tooltip tooltip-bottom"
-                      :class="editingTree ? 'btn-active' : ''" data-tip="Rearrange tree">
-                <i data-lucide="move" class="w-3.5 h-3.5"></i>
-              </button>
-            {% endif %}
-          </div>
+          {% endif %}
         </div>
         <div id="tree-panel"
              hx-get="{% url 'discussions:discussion_tree' space_id=space.pk %}"
@@ -51,14 +45,20 @@
              data-move-url-template="{% url 'discussions:discussion_move' space_id=space.pk discussion_id='00000000-0000-0000-0000-000000000000' %}">
           <span class="loading loading-spinner loading-sm"></span>
         </div>
-        {% if participant.role.can_set_permissions or participant.role.can_moderate %}
         <div class="divider my-3"></div>
-        <h3 class="text-sm font-semibold mb-2">Admin</h3>
+        <h3 class="text-sm font-semibold mb-2">Space</h3>
         <div class="flex flex-col gap-1">
+          <button type="button"
+                  @click="document.getElementById('aboutSpaceModal').showModal()"
+                  class="btn btn-ghost btn-sm justify-start gap-2 text-xs w-full">
+            <i data-lucide="info" class="w-4 h-4"></i> About this space
+          </button>
+          {% if can_view_participants %}
           <a href="{% url 'spaces:participants' space_id=space.pk %}" class="btn btn-ghost btn-sm justify-start gap-2 text-xs">
             <i data-lucide="users" class="w-4 h-4"></i> Participants
           </a>
-          {% if participant.role.can_set_permissions %}
+          {% endif %}
+          {% if can_set_permissions %}
           <a href="{% url 'spaces:permissions' space_id=space.pk %}" class="btn btn-ghost btn-sm justify-start gap-2 text-xs">
             <i data-lucide="shield" class="w-4 h-4"></i> Roles & Permissions
           </a>
@@ -66,8 +66,36 @@
             <i data-lucide="settings" class="w-4 h-4"></i> Settings
           </a>
           {% endif %}
+          {% if lifecycle_actions %}
+            {% for action in lifecycle_actions %}
+            <button type="button"
+                    class="btn {% if action.tone == 'warning' %}btn-warning{% elif action.tone == 'danger' %}btn-error{% else %}btn-ghost{% endif %} btn-sm justify-start gap-2 text-xs w-full"
+                    @click="document.getElementById('lifecycleDialog-{{ action.value }}').showModal()">
+              <i data-lucide="folder-lock" class="w-4 h-4"></i> {{ action.label }}
+            </button>
+            <dialog id="lifecycleDialog-{{ action.value }}" class="modal">
+              <div class="modal-box max-w-md">
+                <h3 class="text-lg font-semibold">{{ action.confirm_title }}</h3>
+                <p class="mt-2 text-sm text-base-content/70">{{ action.confirm_message }}</p>
+                <div class="modal-action">
+                  <form method="dialog">
+                    <button type="submit" class="btn btn-ghost btn-sm">Cancel</button>
+                  </form>
+                  <form method="post" action="{% url 'spaces:lifecycle_update' space_id=space.pk %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="lifecycle" value="{{ action.value }}">
+                    <button type="submit"
+                            class="btn {% if action.tone == 'warning' %}btn-warning{% elif action.tone == 'danger' %}btn-error{% else %}btn-ghost{% endif %} btn-sm gap-2">
+                      <i data-lucide="folder-lock" class="w-4 h-4"></i> {{ action.label }}
+                    </button>
+                  </form>
+                </div>
+              </div>
+              <form method="dialog" class="modal-backdrop"><button>close</button></form>
+            </dialog>
+            {% endfor %}
+          {% endif %}
         </div>
-        {% endif %}
       </aside>
     </div>
   </div>
@@ -100,7 +128,7 @@
         <div class="text-center py-12">
           <i data-lucide="message-circle" class="w-12 h-12 mx-auto text-base-content/20 mb-4"></i>
           <p class="text-base-content/50 text-lg">This space has no content yet.</p>
-          {% if participant.role.can_shape_tree %}
+          {% if can_shape %}
             <p class="text-base-content/60 text-sm mt-1">Create the first discussion to start.</p>
           {% endif %}
         </div>
@@ -117,6 +145,9 @@
     <div class="space-y-3 text-sm">
       <div class="flex flex-wrap items-center gap-2 text-xs">
         {% lifecycle_badge space %}
+        {% if not space.is_public %}
+        <span class="badge badge-outline">Private</span>
+        {% endif %}
       </div>
       {% if space.description %}
       <div class="text-base-content/70 prose prose-sm max-w-none">{{ space.description }}</div>
@@ -153,7 +184,8 @@
   </div>
   <form method="dialog" class="modal-backdrop"><button>close</button></form>
 </dialog>
-<script nonce="{{ csp_nonce }}">
+{% if show_about_modal %}
+<script id="aboutSpaceModalAutoload" nonce="{{ csp_nonce }}">
   (function() {
     var modal = document.getElementById('aboutSpaceModal');
     if (!modal) {
@@ -166,4 +198,5 @@
     });
   })();
 </script>
+{% endif %}
 {% endblock %}

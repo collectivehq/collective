@@ -6,6 +6,7 @@ import uuid
 from django.conf import settings
 from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
+from django.core.validators import RegexValidator
 from django.db import models
 from django.db.models import UniqueConstraint
 from django.utils import timezone
@@ -56,6 +57,10 @@ class Space(CRUDModel):
     lifecycle = models.CharField(max_length=20, choices=Lifecycle.choices, default=Lifecycle.DRAFT)
     starts_at = models.DateTimeField(null=True, blank=True)
     ends_at = models.DateTimeField(null=True, blank=True)
+    is_public = models.BooleanField(
+        default=True,
+        help_text="Public spaces are listed and can be joined directly. Private spaces require invites.",
+    )
     opinion_types = ArrayField(
         models.CharField(max_length=20),
         default=list,
@@ -99,6 +104,11 @@ class Space(CRUDModel):
     def __str__(self) -> str:
         return self.title
 
+    def clean(self) -> None:
+        super().clean()
+        if self.default_role_id is not None and self.default_role is not None and self.default_role.space_id != self.pk:
+            raise ValidationError({"default_role": "Default role must belong to this space."})
+
     @property
     def is_active(self) -> bool:
         if self.lifecycle != self.Lifecycle.OPEN or self.deleted_at is not None:
@@ -112,16 +122,35 @@ class Space(CRUDModel):
 
 
 class Role(BaseModel):
+    hex_color_validator = RegexValidator(
+        regex=r"^#[0-9A-Fa-f]{6}$",
+        message="Enter a valid hex color like #A1B2C3.",
+    )
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     space = models.ForeignKey("spaces.Space", on_delete=models.CASCADE, related_name="roles")
     label = models.CharField(max_length=100)
+    post_highlight_color = models.CharField(max_length=7, blank=True, default="", validators=[hex_color_validator])
     can_post = models.BooleanField(default=True)
-    can_shape_tree = models.BooleanField(default=False)
+    can_create_draft = models.BooleanField(default=True)
+    can_edit_others_post = models.BooleanField(default=False)
+    can_delete_own_post = models.BooleanField(default=True)
+    can_view_history = models.BooleanField(default=True)
+    can_create_discussion = models.BooleanField(default=False)
+    can_rename_discussion = models.BooleanField(default=False)
+    can_delete_discussion = models.BooleanField(default=False)
+    can_promote_post = models.BooleanField(default=False)
     can_set_permissions = models.BooleanField(default=False)
     can_resolve = models.BooleanField(default=False)
+    can_reopen_discussion = models.BooleanField(default=False)
     can_reorganise = models.BooleanField(default=False)
-    can_moderate = models.BooleanField(default=False)
+    can_restructure = models.BooleanField(default=False)
+    can_moderate_content = models.BooleanField(default=False)
+    can_manage_participants = models.BooleanField(default=False)
     can_close_space = models.BooleanField(default=False)
+    can_archive_space = models.BooleanField(default=False)
+    can_unarchive_space = models.BooleanField(default=False)
+    can_modify_closed_space = models.BooleanField(default=False)
     can_view_drafts = models.BooleanField(default=False)
     can_opine = models.BooleanField(default=True)
     can_react = models.BooleanField(default=True)
@@ -156,6 +185,11 @@ class SpaceParticipant(BaseModel):
     def __str__(self) -> str:
         return f"{self.user} in {self.space}"
 
+    def clean(self) -> None:
+        super().clean()
+        if self.role_id is not None and self.role is not None and self.role.space_id != self.space_id:
+            raise ValidationError({"role": "Role must belong to the participant's space."})
+
 
 class SpaceInvite(BaseModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -170,6 +204,11 @@ class SpaceInvite(BaseModel):
 
     def __str__(self) -> str:
         return f"Invite to {self.space} as {self.role}"
+
+    def clean(self) -> None:
+        super().clean()
+        if self.role_id is not None and self.role is not None and self.role.space_id != self.space_id:
+            raise ValidationError({"role": "Role must belong to the invite's space."})
 
     @property
     def is_expired(self) -> bool:

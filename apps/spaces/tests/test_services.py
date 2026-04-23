@@ -24,11 +24,23 @@ class TestCreateSpace:
         assert space.default_role.label == "Member"
 
         roles = Role.objects.filter(space=space)
-        assert roles.count() == 3
+        assert roles.count() == 4
         labels = set(roles.values_list("label", flat=True))
-        assert labels == {"Facilitator", "Member", "Observer"}
+        assert labels == {"Facilitator", "Moderator", "Member", "Observer"}
+        assert roles.get(label="Facilitator").can_edit_others_post is True
+        assert roles.get(label="Facilitator").can_close_space is True
+        assert roles.get(label="Facilitator").can_archive_space is True
+        assert roles.get(label="Facilitator").can_unarchive_space is True
+        assert roles.get(label="Facilitator").can_modify_closed_space is True
         assert roles.get(label="Facilitator").can_view_drafts is True
+        assert roles.get(label="Moderator").can_edit_others_post is True
+        assert roles.get(label="Moderator").can_modify_closed_space is True
+        assert roles.get(label="Moderator").can_promote_post is True
+        assert roles.get(label="Member").can_edit_others_post is False
+        assert roles.get(label="Member").can_modify_closed_space is False
         assert roles.get(label="Member").can_view_drafts is False
+        assert roles.get(label="Observer").can_edit_others_post is False
+        assert roles.get(label="Observer").can_modify_closed_space is False
         assert roles.get(label="Observer").can_view_drafts is False
 
     def test_creates_facilitator_participant(self):
@@ -64,6 +76,12 @@ class TestCreateSpace:
 
         assert space.information == "<p>Welcome</p>"
 
+    def test_creates_private_space(self):
+        user = UserFactory()
+        space = space_services.create_space(title="Test", created_by=user, is_public=False)
+
+        assert space.is_public is False
+
 
 @pytest.mark.django_db
 class TestLifecycle:
@@ -73,6 +91,24 @@ class TestLifecycle:
         assert space.lifecycle == Space.Lifecycle.DRAFT
         space = space_services.open_space(space=space)
         assert space.lifecycle == Space.Lifecycle.OPEN
+
+    def test_transition_space_lifecycle(self):
+        user = UserFactory()
+        space = space_services.create_space(title="Test", created_by=user)
+        space_services.open_space(space=space)
+        space = space_services.transition_space_lifecycle(space=space, lifecycle=Space.Lifecycle.CLOSED)
+        assert space.lifecycle == Space.Lifecycle.CLOSED
+
+    def test_archived_space_can_be_unarchived_to_closed(self):
+        user = UserFactory()
+        space = space_services.create_space(title="Test", created_by=user)
+        space_services.open_space(space=space)
+        space = space_services.transition_space_lifecycle(space=space, lifecycle=Space.Lifecycle.CLOSED)
+        space = space_services.transition_space_lifecycle(space=space, lifecycle=Space.Lifecycle.ARCHIVED)
+
+        space = space_services.transition_space_lifecycle(space=space, lifecycle=Space.Lifecycle.CLOSED)
+
+        assert space.lifecycle == Space.Lifecycle.CLOSED
 
 
 @pytest.mark.django_db
@@ -110,6 +146,17 @@ class TestJoinLeave:
         observer_role = Role.objects.get(space=space, label="Observer")
         participant = space_services.join_space(space=space, user=joiner, role=observer_role)
         assert participant.role.label == "Observer"
+
+    def test_join_rejects_role_from_other_space(self):
+        user = UserFactory()
+        joiner = UserFactory()
+        space = space_services.create_space(title="Test", created_by=user)
+        other_space = space_services.create_space(title="Other", created_by=UserFactory())
+        space_services.open_space(space=space)
+        other_role = Role.objects.get(space=other_space, label="Observer")
+
+        with pytest.raises(ValueError, match="does not belong to this space"):
+            space_services.join_space(space=space, user=joiner, role=other_role)
 
     def test_leave_space(self):
         user = UserFactory()
@@ -165,6 +212,18 @@ class TestJoinLeave:
         observer = Role.objects.get(space=space, label="Observer")
         updated = space_services.update_participant_role(participant=participant, role=observer)
         assert updated.role.label == "Observer"
+
+    def test_update_participant_role_rejects_role_from_other_space(self):
+        user = UserFactory()
+        joiner = UserFactory()
+        space = space_services.create_space(title="Test", created_by=user)
+        other_space = space_services.create_space(title="Other", created_by=UserFactory())
+        space_services.open_space(space=space)
+        participant = space_services.join_space(space=space, user=joiner)
+        other_role = Role.objects.get(space=other_space, label="Observer")
+
+        with pytest.raises(ValueError, match="does not belong to this space"):
+            space_services.update_participant_role(participant=participant, role=other_role)
 
 
 @pytest.mark.django_db
@@ -231,6 +290,22 @@ class TestUpdateRoleService:
         assert updated.can_view_drafts is True
         assert updated.can_resolve is True
 
+    def test_update_post_highlight_color(self):
+        user = UserFactory()
+        space = space_services.create_space(title="Test", created_by=user)
+        role = space_services.create_role(space=space, label="Reviewer", created_by=user)
+        updated = space_services.update_role(role=role, post_highlight_color="#facc15")
+
+        assert updated.post_highlight_color == "#FACC15"
+
+    def test_invalid_post_highlight_color_raises(self):
+        user = UserFactory()
+        space = space_services.create_space(title="Test", created_by=user)
+        role = space_services.create_role(space=space, label="Reviewer", created_by=user)
+
+        with pytest.raises(ValueError, match="hex color"):
+            space_services.update_role(role=role, post_highlight_color="banana")
+
     def test_cannot_remove_last_admin_permission(self):
         user = UserFactory()
         space = space_services.create_space(title="Test", created_by=user)
@@ -277,6 +352,15 @@ class TestSetDefaultRole:
         space.refresh_from_db()
         assert space.default_role == observer_role
 
+    def test_set_default_role_rejects_role_from_other_space(self):
+        user = UserFactory()
+        space = space_services.create_space(title="Test", created_by=user)
+        other_space = space_services.create_space(title="Other", created_by=UserFactory())
+        other_role = Role.objects.get(space=other_space, label="Observer")
+
+        with pytest.raises(ValueError, match="does not belong to this space"):
+            space_services.set_default_role(space=space, role=other_role)
+
 
 @pytest.mark.django_db
 class TestSpaceFactory:
@@ -285,5 +369,5 @@ class TestSpaceFactory:
 
         assert space.root_discussion is not None
         assert space.default_role is not None
-        assert Role.objects.filter(space=space).count() == 3
+        assert Role.objects.filter(space=space).count() == 4
         assert SpaceParticipant.objects.filter(space=space, user=space.created_by, role__label="Facilitator").exists()

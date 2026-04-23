@@ -31,3 +31,19 @@ class TestCanReact:
         post = PostFactory(space=space)
 
         assert can_react(participant_user, post) is False
+
+    def test_facilitator_can_react_in_closed_space(self, open_space_with_users):
+        space, creator, _, _ = open_space_with_users
+        space.lifecycle = space.Lifecycle.CLOSED
+        space.save(update_fields=["lifecycle"])
+        post = PostFactory(space=space)
+
+        assert can_react(creator, post) is True
+
+    def test_member_cannot_react_in_closed_space(self, open_space_with_users):
+        space, _, participant_user, _ = open_space_with_users
+        space.lifecycle = space.Lifecycle.CLOSED
+        space.save(update_fields=["lifecycle"])
+        post = PostFactory(space=space)
+
+        assert can_react(participant_user, post) is False

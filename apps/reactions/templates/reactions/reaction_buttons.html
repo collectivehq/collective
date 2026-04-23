@@ -2,34 +2,53 @@
 <div id="reactions-{{ post.pk }}" class="flex items-center gap-1"
      hx-target="#reactions-{{ post.pk }}"
      hx-swap="outerHTML">
-{% if user_reaction %}
-  <span class="flex items-center gap-0.5 text-xs text-base-content/60">
-    {% if user_reaction == 'like' %}<i data-lucide="thumbs-up" class="w-3 h-3 text-primary"></i>{% else %}<i data-lucide="thumbs-down" class="w-3 h-3 text-error"></i>{% endif %}
-  </span>
-{% endif %}
-<div class="dropdown dropdown-top">
-  <label tabindex="0" class="btn btn-ghost btn-xs btn-square">
-    <i data-lucide="smile-plus" class="w-3.5 h-3.5"></i>
-  </label>
-  <ul tabindex="0" class="dropdown-content z-10 menu menu-sm p-1 shadow-lg bg-base-100 rounded-box w-32 mb-1">
-    {% if "like" in space.reaction_types %}
-    <li>
-      <button hx-post="{% url 'reactions:toggle_reaction' space_id=space.pk post_id=post.pk %}"
-              hx-vals='{"type": "like"}'
-              class="{% if user_reaction == 'like' %}font-bold text-primary{% endif %}">
-        <i data-lucide="thumbs-up" class="w-3.5 h-3.5"></i> Like <span class="badge badge-xs">{{ reaction_counts|dict_get:"like" }}</span>
-      </button>
-    </li>
+  {% with like_count=reaction_counts|dict_get:"like" dislike_count=reaction_counts|dict_get:"dislike" %}
+    {% if "like" in space.reaction_types and like_count %}
+    <button
+      data-role="visible-like-reaction"
+      hx-post="{% url 'reactions:toggle_reaction' space_id=space.pk post_id=post.pk %}"
+      hx-vals='{"type": "like"}'
+      class="btn btn-ghost btn-xs gap-1 {% if user_reaction == 'like' %}text-primary{% else %}text-base-content/65{% endif %}">
+      <i data-lucide="thumbs-up" class="w-3.5 h-3.5"></i>
+      <span>{{ like_count }}</span>
+    </button>
     {% endif %}
-    {% if "dislike" in space.reaction_types %}
-    <li>
-      <button hx-post="{% url 'reactions:toggle_reaction' space_id=space.pk post_id=post.pk %}"
-              hx-vals='{"type": "dislike"}'
-              class="{% if user_reaction == 'dislike' %}font-bold text-error{% endif %}">
-        <i data-lucide="thumbs-down" class="w-3.5 h-3.5"></i> Dislike <span class="badge badge-xs">{{ reaction_counts|dict_get:"dislike" }}</span>
-      </button>
-    </li>
+    {% if "dislike" in space.reaction_types and dislike_count %}
+    <button
+      data-role="visible-dislike-reaction"
+      hx-post="{% url 'reactions:toggle_reaction' space_id=space.pk post_id=post.pk %}"
+      hx-vals='{"type": "dislike"}'
+      class="btn btn-ghost btn-xs gap-1 {% if user_reaction == 'dislike' %}text-error{% else %}text-base-content/65{% endif %}">
+      <i data-lucide="thumbs-down" class="w-3.5 h-3.5"></i>
+      <span>{{ dislike_count }}</span>
+    </button>
     {% endif %}
-  </ul>
-</div>
+    {% if "like" in space.reaction_types and not like_count or "dislike" in space.reaction_types and not dislike_count %}
+    <div class="dropdown dropdown-top">
+      <label data-role="reaction-trigger" tabindex="0" class="btn btn-ghost btn-xs btn-square">
+        <i data-lucide="smile-plus" class="w-3.5 h-3.5"></i>
+      </label>
+      <ul tabindex="0" class="dropdown-content z-10 menu menu-sm p-1 shadow-lg bg-base-100 rounded-box w-32 mb-1">
+        {% if "like" in space.reaction_types and not like_count %}
+        <li>
+          <button hx-post="{% url 'reactions:toggle_reaction' space_id=space.pk post_id=post.pk %}"
+                  hx-vals='{"type": "like"}'
+                  class="{% if user_reaction == 'like' %}font-bold text-primary{% endif %}">
+            <i data-lucide="thumbs-up" class="w-3.5 h-3.5"></i> Like
+          </button>
+        </li>
+        {% endif %}
+        {% if "dislike" in space.reaction_types and not dislike_count %}
+        <li>
+          <button hx-post="{% url 'reactions:toggle_reaction' space_id=space.pk post_id=post.pk %}"
+                  hx-vals='{"type": "dislike"}'
+                  class="{% if user_reaction == 'dislike' %}font-bold text-error{% endif %}">
+            <i data-lucide="thumbs-down" class="w-3.5 h-3.5"></i> Dislike
+          </button>
+        </li>
+        {% endif %}
+      </ul>
+    </div>
+    {% endif %}
+  {% endwith %}
 </div>

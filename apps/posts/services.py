@@ -14,6 +14,8 @@ from apps.discussions.models import Discussion
 from apps.discussions.ordering import next_sequence_index
 from apps.discussions.signals import discussion_items_soft_deleted, discussion_posted
 from apps.posts.models import Link, Post, PostRevision
+from apps.spaces.models import SpaceParticipant
+from apps.spaces.permissions import can_modify_space
 from apps.spaces.services import touch_space
 from apps.users.models import User
 
@@ -66,8 +68,12 @@ def create_post(
     author: User,
     content: str,
     is_draft: bool = False,
+    participant: SpaceParticipant | None = None,
 ) -> Post:
-    if not discussion.space.is_active:
+    if discussion.space.deleted_at is not None or discussion.space.lifecycle == discussion.space.Lifecycle.ARCHIVED:
+        msg = "Discussion is locked"
+        raise ValueError(msg)
+    if not discussion.space.is_active and not can_modify_space(author, discussion.space, participant=participant):
         msg = "Discussion is locked"
         raise ValueError(msg)
 
@@ -123,7 +129,7 @@ def update_post(
             update_fields.append("created_at")
         post.save(update_fields=update_fields)
         touch_space(space=post.space)
-        if published_from_draft and actor_user is not None:
+        if published_from_draft:
             parent = post.get_parent()
             transaction.on_commit(
                 partial(_send_discussion_posted, discussion_id=parent.pk, post_id=post.pk, actor_id=actor_user.pk)
@@ -183,10 +189,6 @@ def move_discussion_item(
 def promote_post_to_discussion(*, post: Post) -> tuple[Discussion, Link]:
     with transaction.atomic():
         parent = post.get_parent()
-        if parent is None:
-            msg = "Cannot promote a root post"
-            raise ValueError(msg)
-
         original_sequence_index = post.sequence_index
         new_discussion = parent.add_child(
             space=post.space,

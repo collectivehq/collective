@@ -1,13 +1,7 @@
 <div x-data="treeState()" x-init="init()">
-  <div class="tree-group" data-parent-id="{{ root_discussion.pk }}">
-    {% for item in nodes %}
-      {% include "discussions/tree_node.html" with item=item %}
-    {% endfor %}
-    {% if can_shape %}
-    {% include "discussions/_add_discussion_form.html" with parent_id=root_discussion.pk show_spacer=True %}
-    {% endif %}
-  </div>
-  {% if not nodes and not can_shape %}
+  {% if root_node %}
+    {% include "discussions/tree_node.html" with item=root_node %}
+  {% else %}
   <p class="text-sm text-base-content/60 py-2">No discussions yet.</p>
   {% endif %}
 </div>

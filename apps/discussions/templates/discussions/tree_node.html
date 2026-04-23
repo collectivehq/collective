@@ -1,7 +1,7 @@
 {% load discussion_tags %}
 <div class="tree-node-wrapper" data-node-id="{{ item.node.pk }}">
   <div class="tree-node flex items-center gap-0.5 py-0.5 group/node">
-    {% if can_shape %}
+    {% if can_reorganise %}
     <span class="drag-handle cursor-grab text-base-content/30 hover:text-base-content/60 flex-shrink-0 tooltip tooltip-bottom" x-show="editingTree" x-cloak data-tip="Drag to reorder">
       <i data-lucide="grip-vertical" class="w-3.5 h-3.5"></i>
     </span>
@@ -38,7 +38,7 @@
       </div>
     </a>
   </div>
-  {% if can_shape %}
+  {% if can_create_discussion %}
   <div class="tree-group ml-4" data-parent-id="{{ item.node.pk }}" {% if item.children %}x-show="expanded.has('{{ item.node.pk }}')"{% endif %}>
     {% for child in item.children %}
       {% include "discussions/tree_node.html" with item=child %}

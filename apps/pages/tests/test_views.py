@@ -17,3 +17,17 @@ class TestLandingView:
 
         assert response.status_code == 302
         assert response.headers["Location"] == reverse("spaces:list")
+
+    def test_landing_links_guests_to_public_spaces(self, client):
+        response = client.get(reverse("pages:home"))
+
+        assert response.status_code == 200
+        assert reverse("spaces:list").encode() in response.content
+
+
+class TestBaseTemplate:
+    def test_brand_link_points_home_for_guests(self, client):
+        response = client.get(reverse("pages:home"))
+
+        assert response.status_code == 200
+        assert f'href="{reverse("pages:home")}"'.encode() in response.content

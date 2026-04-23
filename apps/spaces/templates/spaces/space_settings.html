@@ -89,6 +89,15 @@
         {{ field }}
         {% if field.errors %}<p class="text-error text-xs mt-0.5">{{ field.errors.0 }}</p>{% endif %}
       </div>
+      {% elif field.name == "is_public" %}
+      <label class="flex items-start gap-3 rounded-box border border-base-300 bg-base-100 px-4 py-3 cursor-pointer">
+        {{ field }}
+        <span class="space-y-1">
+          <span class="block text-sm font-medium">Public space</span>
+          <span class="block text-xs text-base-content/60">Private spaces are hidden from listings and require invite links.</span>
+        </span>
+      </label>
+      {% if field.errors %}<p class="text-error text-xs mt-0.5">{{ field.errors.0 }}</p>{% endif %}
       {% else %}
       <div class="space-y-1">
         <label class="label py-1" for="{{ field.id_for_label }}"><span class="text-sm">{{ field.label }}</span></label>

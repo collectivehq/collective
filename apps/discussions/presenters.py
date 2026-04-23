@@ -10,10 +10,18 @@ from apps.posts.models import Link, Post
 @dataclass(slots=True)
 class DiscussionDetailPost:
     post: Post
+    author_role_highlight_color: str
     user_can_edit: bool
+    can_publish_draft: bool
     user_can_react: bool
     user_reaction_type: str
     reaction_counts: dict[str, int]
+    can_delete: bool
+    can_move: bool
+    can_promote: bool
+    can_view_history: bool
+    show_history: bool
+    show_actions: bool
 
     @property
     def is_post(self) -> bool:
@@ -32,6 +40,9 @@ class DiscussionDetailPost:
 class DiscussionDetailLink:
     link: Link
     link_preview_post: Post | None
+    can_delete: bool
+    can_move: bool
+    show_actions: bool
 
     @property
     def is_post(self) -> bool:

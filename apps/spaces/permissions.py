@@ -47,16 +47,65 @@ def _check_role_flag(
     return bool(getattr(role, attr))
 
 
+def _role_can_modify_space(*, role: Role, space: Space) -> bool:
+    if space.deleted_at is not None or space.lifecycle == Space.Lifecycle.ARCHIVED:
+        return False
+    if space.lifecycle == Space.Lifecycle.CLOSED:
+        return bool(role.can_modify_closed_space)
+    return space.is_active
+
+
+def can_modify_space(user: User, space: Space, *, participant: SpaceParticipant | None = None) -> bool:
+    role = get_role_for_user(user, space, participant)
+    if role is None:
+        return False
+    return _role_can_modify_space(role=role, space=space)
+
+
 def can_set_permissions(user: User, space: Space, *, participant: SpaceParticipant | None = None) -> bool:
-    return _check_role_flag(user, space, "can_set_permissions", participant=participant)
+    return _check_role_flag(
+        user,
+        space,
+        "can_set_permissions",
+        participant=participant,
+        extra_check=can_modify_space(user, space, participant=participant),
+    )
 
 
-def can_moderate(user: User, space: Space, *, participant: SpaceParticipant | None = None) -> bool:
-    return _check_role_flag(user, space, "can_moderate", participant=participant)
+def can_moderate_content(user: User, space: Space, *, participant: SpaceParticipant | None = None) -> bool:
+    return _check_role_flag(
+        user,
+        space,
+        "can_moderate_content",
+        participant=participant,
+        extra_check=can_modify_space(user, space, participant=participant),
+    )
+
+
+def can_manage_participants(user: User, space: Space, *, participant: SpaceParticipant | None = None) -> bool:
+    return _check_role_flag(
+        user,
+        space,
+        "can_manage_participants",
+        participant=participant,
+        extra_check=can_modify_space(user, space, participant=participant),
+    )
 
 
 def can_close_space(user: User, space: Space, *, participant: SpaceParticipant | None = None) -> bool:
     return _check_role_flag(user, space, "can_close_space", participant=participant)
+
+
+def can_archive_space(user: User, space: Space, *, participant: SpaceParticipant | None = None) -> bool:
+    return _check_role_flag(user, space, "can_archive_space", participant=participant)
+
+
+def can_unarchive_space(user: User, space: Space, *, participant: SpaceParticipant | None = None) -> bool:
+    return _check_role_flag(user, space, "can_unarchive_space", participant=participant)
+
+
+def can_modify_closed_space(user: User, space: Space, *, participant: SpaceParticipant | None = None) -> bool:
+    return _check_role_flag(user, space, "can_modify_closed_space", participant=participant)
 
 
 def can_view_space(user: User, space: Space, *, participant: SpaceParticipant | None = None) -> bool:

@@ -1,10 +1,17 @@
 {% load spaces_tags %}
-<a href="{{ card_url }}" class="card bg-base-100 shadow hover:shadow-md transition-shadow">
+{% if card_url %}
+<a href="{{ card_url }}" class="card card-border bg-base-100 shadow-sm transition-shadow hover:shadow-md">
+{% else %}
+<div class="card card-border bg-base-100 shadow-sm">
+{% endif %}
   <div class="card-body p-5">
     <h3 class="card-title text-base">{{ space.title }}</h3>
     <p class="text-sm text-base-content/60 line-clamp-2">{{ space.description|truncatewords:20 }}</p>
     <div class="flex flex-wrap gap-3 mt-2 items-center">
       {% if show_lifecycle %}{% lifecycle_badge space %}{% endif %}
+      {% if not space.is_public %}
+      <span class="badge badge-outline badge-sm">Private</span>
+      {% endif %}
       <span class="text-xs text-base-content/50 flex items-center gap-1">
         <i data-lucide="messages-square" class="w-3 h-3"></i> {{ space.num_discussions }}
       </span>
@@ -31,4 +38,8 @@
       </span>
     </div>
   </div>
+{% if card_url %}
 </a>
+{% else %}
+</div>
+{% endif %}

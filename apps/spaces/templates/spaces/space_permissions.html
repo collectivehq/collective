@@ -1,5 +1,21 @@
 {% extends "base.html" %}
 {% block title %}Roles & Permissions — {{ space.title }}{% endblock %}
+{% block extra_head %}
+<style>
+  .color-filter-btn {
+    border-color: color-mix(in oklab, var(--preset-color) 40%, var(--color-base-300)) !important;
+    background: color-mix(in oklab, var(--preset-color) 18%, white) !important;
+    color: color-mix(in oklab, black 78%, var(--preset-color) 22%) !important;
+  }
+
+  .color-filter-btn:checked {
+    border-color: var(--preset-color) !important;
+    background: var(--preset-color) !important;
+    color: color-mix(in oklab, black 86%, var(--preset-color) 14%) !important;
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, black 12%, transparent);
+  }
+</style>
+{% endblock %}
 {% block content %}
 <div class="max-w-5xl mx-auto">
   <div class="flex items-center justify-between mb-4">
@@ -25,13 +41,50 @@
                  class="input input-sm flex-1" required>
           <span class="text-xs text-base-content/60">{{ item.participant_count }} member{{ item.participant_count|pluralize }}</span>
         </div>
-        <div class="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1">
-          {% for field, label, checked in item.permissions %}
-          <label class="flex items-center gap-1.5 cursor-pointer text-sm py-0.5">
-            <input type="checkbox" name="{{ field }}" class="checkbox checkbox-xs checkbox-primary"
-                   {% if checked %}checked{% endif %}>
-            <span>{{ label }}</span>
-          </label>
+        <div class="mb-3 flex flex-wrap items-center gap-3">
+          <div class="space-y-2">
+            <div class="flex items-center gap-2 text-sm">
+              <span class="text-base-content/70">Post highlight</span>
+              <span class="w-4 h-4 rounded-full border border-base-300 bg-base-200"
+                    {% if item.post_highlight_color %}style="background-color: {{ item.post_highlight_color }};"{% endif %}></span>
+              <span class="text-xs text-base-content/50">
+                {% if item.post_highlight_color %}{{ item.post_highlight_color }}{% else %}No highlight{% endif %}
+              </span>
+            </div>
+            <div class="filter">
+              <input class="btn btn-sm filter-reset"
+                     type="radio"
+                     name="post_highlight_color"
+                     aria-label="None"
+                     value=""
+                     {% if not item.post_highlight_color %}checked{% endif %}>
+              {% for preset_label, preset_color in post_highlight_color_presets %}
+              <input class="btn btn-sm color-filter-btn"
+                     type="radio"
+                     name="post_highlight_color"
+                     aria-label="{{ preset_label }}"
+                     value="{{ preset_color }}"
+                     style="--preset-color: {{ preset_color }};"
+                     {% if item.post_highlight_color == preset_color %}checked{% endif %}>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+        <div class="mb-2 text-sm font-medium text-base-content/70">Permissions</div>
+        <div class="space-y-4">
+          {% for group in item.permission_groups %}
+          <fieldset class="fieldset bg-base-200 border border-base-300 rounded-box p-4">
+            <legend class="fieldset-legend text-xs font-semibold uppercase tracking-wide text-base-content/60 px-1">{{ group.title }}</legend>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1">
+              {% for field, label, checked in group.permissions %}
+              <label class="flex items-center gap-1.5 cursor-pointer text-sm py-0.5">
+                <input type="checkbox" name="{{ field }}" class="checkbox checkbox-xs checkbox-primary"
+                       {% if checked %}checked{% endif %}>
+                <span>{{ label }}</span>
+              </label>
+              {% endfor %}
+            </div>
+          </fieldset>
           {% endfor %}
         </div>
       </form>
@@ -67,12 +120,33 @@
 
   <div class="card bg-base-100 border border-dashed border-base-content/30">
     <div class="card-body py-3 px-4">
-      <form method="post" action="{% url 'spaces:role_create' space_id=space.pk %}" class="flex items-center gap-2">
+      <form method="post" action="{% url 'spaces:role_create' space_id=space.pk %}" class="space-y-3">
         {% csrf_token %}
-        <i data-lucide="plus" class="w-4 h-4 text-base-content/60"></i>
-        <input type="text" name="label" placeholder="New role name…"
-               class="input input-sm flex-1" required>
-        <button type="submit" class="btn btn-primary btn-sm">Add Role</button>
+        <div class="flex items-center gap-2">
+          <i data-lucide="plus" class="w-4 h-4 text-base-content/60"></i>
+          <input type="text" name="label" placeholder="New role name…"
+                 class="input input-sm flex-1" required>
+          <button type="submit" class="btn btn-primary btn-sm">Add Role</button>
+        </div>
+        <div class="space-y-2">
+          <div class="text-sm text-base-content/70">Post highlight</div>
+          <div class="filter">
+            <input class="btn btn-sm filter-reset"
+                   type="radio"
+                   name="post_highlight_color"
+                   aria-label="None"
+                   value=""
+                   checked>
+            {% for preset_label, preset_color in post_highlight_color_presets %}
+            <input class="btn btn-sm color-filter-btn"
+                   type="radio"
+                   name="post_highlight_color"
+                   aria-label="{{ preset_label }}"
+                   value="{{ preset_color }}"
+                   style="--preset-color: {{ preset_color }};">
+            {% endfor %}
+          </div>
+        </div>
       </form>
     </div>
   </div>

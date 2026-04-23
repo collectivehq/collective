@@ -25,6 +25,7 @@ class SpaceCreateForm(forms.Form):
     )
     source_docx = forms.FileField(required=False)
     source_markdown = forms.FileField(required=False)
+    is_public = forms.BooleanField(required=False, initial=True)
 
     def clean_source_docx(self) -> UploadedFile | None:
         uploaded = cast(UploadedFile | None, self.cleaned_data.get("source_docx"))
@@ -88,7 +89,7 @@ class SpaceSettingsForm(forms.ModelForm):  # type: ignore[type-arg]
             "title",
             "description",
             "information",
-            "lifecycle",
+            "is_public",
             "starts_at",
             "ends_at",
             "opinion_types",
@@ -99,33 +100,18 @@ class SpaceSettingsForm(forms.ModelForm):  # type: ignore[type-arg]
             "title": forms.TextInput(attrs={"class": "input w-full"}),
             "description": forms.Textarea(attrs={"class": "textarea w-full", "rows": 4}),
             "information": forms.Textarea(attrs={"class": "textarea tinymce-editor w-full", "rows": 8}),
-            "lifecycle": forms.Select(attrs={"class": "select w-full"}),
+            "is_public": forms.CheckboxInput(attrs={"class": "checkbox checkbox-sm mt-0.5"}),
             "starts_at": forms.DateTimeInput(attrs={"type": "datetime-local", "class": "input w-full"}),
             "ends_at": forms.DateTimeInput(attrs={"type": "datetime-local", "class": "input w-full"}),
             "edit_window_minutes": forms.HiddenInput(attrs={"x-ref": "hidden"}),
         }
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, *args: Any, allow_image_uploads: bool = False, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        if self.instance.pk:
+        if allow_image_uploads and self.instance.pk:
             self.fields["information"].widget.attrs["data-upload-url"] = reverse(
                 "posts:image_upload", kwargs={"space_id": self.instance.pk}
             )
-
-    VALID_TRANSITIONS: dict[str, set[str]] = {
-        "draft": {"open"},
-        "open": {"closed"},
-        "closed": {"open", "archived"},
-        "archived": set(),
-    }
-
-    def clean_lifecycle(self) -> str:
-        new = str(self.cleaned_data["lifecycle"])
-        if self.instance.pk:
-            old = self.instance.lifecycle
-            if new != old and new not in self.VALID_TRANSITIONS.get(old, set()):
-                raise forms.ValidationError(f"Cannot transition from '{old}' to '{new}'.")
-        return new
 
     def clean_edit_window_minutes(self) -> int | None:
         edit_window_minutes = self.cleaned_data.get("edit_window_minutes")

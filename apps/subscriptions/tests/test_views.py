@@ -84,6 +84,20 @@ class TestToggleSubscriptionView:
         )
         assert response.status_code == 403
 
+    def test_archived_space_denies_subscription_toggle(self, participant_client):
+        c, space, discussion = participant_client
+        space.lifecycle = Space.Lifecycle.ARCHIVED
+        space.save(update_fields=["lifecycle"])
+
+        response = c.post(
+            reverse(
+                "subscriptions:toggle_subscription",
+                kwargs={"space_id": space.pk, "discussion_id": discussion.pk},
+            ),
+        )
+
+        assert response.status_code == 403
+
     @override_settings(TOGGLE_RATE_LIMIT_MAX_ATTEMPTS=1, TOGGLE_RATE_LIMIT_WINDOW_SECONDS=60)
     def test_rate_limits_toggle_subscription(self, participant_client):
         cache.clear()

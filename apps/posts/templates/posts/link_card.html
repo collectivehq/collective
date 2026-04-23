@@ -22,14 +22,13 @@
         {% if link.target and not link.target.deleted_at and link_preview_post %}
           <span>{{ link_preview_post.created_at|timesince }} ago</span>
         {% endif %}
-        {% if space.is_active %}
-        {% if can_moderate or can_reorganise and all_discussions %}
+        {% if show_actions %}
         <div class="dropdown dropdown-end">
           <label tabindex="0" class="btn btn-ghost btn-xs btn-square">
             <i data-lucide="ellipsis-vertical" class="w-3.5 h-3.5"></i>
           </label>
           <ul tabindex="0" class="dropdown-content z-10 menu menu-sm p-1 shadow-lg bg-base-100 rounded-box w-40">
-            {% if can_moderate %}
+            {% if can_delete %}
             <li>
               <button hx-post="{% url 'posts:link_delete' space_id=space.pk link_id=link.pk %}"
                       hx-target="#conversation-panel" hx-swap="innerHTML"
@@ -38,7 +37,7 @@
               </button>
             </li>
             {% endif %}
-            {% if can_reorganise and all_discussions %}
+            {% if can_move %}
             <li>
               <button @click="document.getElementById('moveDialog-{{ link.pk }}').showModal(); lucide.createIcons({ node: document.getElementById('moveDialog-{{ link.pk }}') }); $el.closest('.dropdown').querySelector('[tabindex]').blur()">
                 <i data-lucide="move" class="w-3 h-3"></i> Move
@@ -47,7 +46,6 @@
             {% endif %}
           </ul>
         </div>
-        {% endif %}
         {% endif %}
       </div>
     </div>
@@ -75,7 +73,7 @@
 
   </div>
 
-  {% if can_reorganise and all_discussions %}
+  {% if can_move %}
   <dialog id="moveDialog-{{ link.pk }}" class="modal"
           x-data="{
             step: 1,

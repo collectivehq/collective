@@ -1,277 +1,593 @@
 {% extends "base.html" %}
 
-{% block title %}Collective — Structured Collective Dialogue{% endblock %}
-
+{% block title %}Collective — Structured Spaces For Thoughtful Discussion{% endblock %}
 
 {% block content %}
+<div class="relative left-1/2 right-1/2 -mt-6 w-screen -translate-x-1/2 bg-base-100">
+  <section class="relative overflow-hidden border-b border-base-300 bg-base-100">
+    <div class="absolute inset-x-0 top-0 h-64 bg-gradient-to-b from-primary/10 to-transparent"></div>
+    <div class="absolute right-0 top-0 h-72 w-72 rounded-full bg-secondary/8 blur-3xl"></div>
 
-{# ── Navbar override — hide default navbar padding on hero #}
+    <div class="relative mx-auto grid max-w-6xl gap-10 px-4 py-14 lg:grid-cols-[1.1fr_0.9fr] lg:items-center lg:py-20">
+      <div>
+        <div class="badge badge-outline badge-lg mb-5 gap-2">
+          <span class="inline-block h-2 w-2 rounded-full bg-success"></span>
+          Open source · MIT licensed
+        </div>
+        <p class="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-primary">
+          Structured discussion platform
+        </p>
+        <h1 class="mb-5 max-w-4xl text-5xl font-black leading-tight tracking-tight sm:text-6xl lg:text-7xl">
+          A clearer way to run discussions that actually lead somewhere.
+        </h1>
+        <p class="mb-8 max-w-2xl text-lg leading-relaxed text-base-content/70 sm:text-xl">
+          Collective gives groups a space to branch complex topics and keep
+          decisions visible after the conversation is over.
+        </p>
+        <div class="mb-8 flex flex-wrap gap-3">
+          <a href="{% url 'account_signup' %}" class="btn btn-primary btn-lg">
+            Create a space
+            <i data-lucide="arrow-right" class="h-4 w-4"></i>
+          </a>
+          <a href="{% url 'spaces:list' %}" class="btn btn-secondary btn-lg">Explore public spaces</a>
+          <a href="{% url 'account_login' %}" class="btn btn-outline btn-lg">Sign in</a>
+        </div>
+      </div>
 
-{# ── Hero ──────────────────────────────────────────────────────────────── #}
-<section class="hero-gradient min-h-[90vh] flex flex-col items-center justify-center text-center px-4 py-24 -mx-4 -mt-6">
-  <div class="max-w-3xl mx-auto">
-    <div class="badge badge-outline badge-lg mb-6 gap-2 font-medium">
-      <span class="inline-block w-2 h-2 rounded-full bg-success animate-pulse"></span>
-      Now open for early access
-    </div>
-    <h1 class="text-5xl sm:text-6xl lg:text-7xl font-extrabold leading-tight mb-6">
-      Think together.<br>
-      <span class="gradient-text">Decide with clarity.</span>
-    </h1>
-    <p class="text-lg sm:text-xl text-base-content/60 max-w-xl mx-auto mb-10 leading-relaxed">
-      Collective is a structured dialogue platform that helps groups explore ideas,
-      surface disagreements, and reach real decisions — without the noise.
-    </p>
-    <div class="flex flex-wrap justify-center gap-3">
-      <a href="{% url 'account_signup' %}" class="btn btn-primary btn-lg shadow-lg">
-        Get started free
-        <i data-lucide="arrow-right" class="w-4 h-4"></i>
-      </a>
-      <a href="{% url 'account_login' %}" class="btn btn-ghost btn-lg">
-        Sign in
-      </a>
-    </div>
-  </div>
-</section>
+      <div class="card border border-base-300 bg-base-100 shadow-xl" x-data="landingHeroExamples()" x-init="init()">
+        <div class="card-body gap-5 p-5 sm:p-6">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-[0.2em] text-base-content/50">Inside a space</p>
+              <h2 class="card-title text-2xl">A conversation people can follow</h2>
+            </div>
+          </div>
 
-{# ── Social proof / stats ──────────────────────────────────────────────── #}
-<div class="stats stats-vertical sm:stats-horizontal bg-base-100 shadow w-full">
-    <div class="stat place-items-center">
-    <div class="stat-figure text-primary">
-        <i data-lucide="git-branch" class="w-8 h-8"></i>
+          <div
+            x-show="visible"
+            x-transition:enter="transition ease-out duration-300"
+            x-transition:enter-start="opacity-0 translate-y-1"
+            x-transition:enter-end="opacity-100 translate-y-0"
+            x-transition:leave="transition ease-in duration-200"
+            x-transition:leave-start="opacity-100 translate-y-0"
+            x-transition:leave-end="opacity-0 -translate-y-1"
+            class="space-y-3"
+          >
+            <div class="space-y-2 text-sm">
+              <div class="rounded-box border border-base-300 bg-base-200 px-4 py-3 font-medium" x-text="active.root">
+              </div>
+              <div class="ml-4 rounded-box border border-base-300 bg-base-100 px-4 py-3" x-text="active.branch">
+              </div>
+              <div class="ml-8 rounded-box border border-primary/25 bg-primary/10 px-4 py-3" x-text="active.focus">
+              </div>
+            </div>
+
+            <div class="space-y-3">
+              <div class="card bg-base-100 shadow-sm mb-2">
+                <div class="card-body px-4 py-3">
+                  <div class="mb-1 flex items-center justify-between text-xs text-base-content/60">
+                    <div class="flex items-center gap-1.5">
+                      <span class="font-medium" x-text="active.author"></span>
+                      <span class="badge badge-ghost badge-xs" x-text="active.role"></span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <span x-text="active.age"></span>
+                      <button class="btn btn-ghost btn-xs h-auto min-h-0 px-1 text-base-content/50 hover:text-base-content/70">
+                        edited
+                      </button>
+                    </div>
+                  </div>
+                  <div class="prose prose-sm max-w-none text-base-content/80">
+                    <p x-text="active.content"></p>
+                  </div>
+                  <div class="mt-2 flex items-center gap-3">
+                    <div class="flex items-center gap-1">
+                      <span
+                        class="btn btn-ghost btn-xs gap-1"
+                        :class="active.user_reaction === 'like' ? 'text-primary' : 'text-base-content/65'"
+                      >
+                        <i data-lucide="thumbs-up" class="h-3.5 w-3.5"></i>
+                        <span x-text="active.like_count"></span>
+                      </span>
+                      <span
+                        class="btn btn-ghost btn-xs gap-1"
+                        :class="active.user_reaction === 'dislike' ? 'text-error' : 'text-base-content/65'"
+                      >
+                        <i data-lucide="thumbs-down" class="h-3.5 w-3.5"></i>
+                        <span x-text="active.dislike_count"></span>
+                      </span>
+                    </div>
+                    <div class="ml-auto">
+                      <button type="button" class="btn btn-ghost btn-xs gap-1">
+                        <i data-lucide="message-square-plus" class="h-3.5 w-3.5"></i>
+                        Discuss
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="rounded-box border border-base-300 p-3">
+                <div class="mb-2 h-2 overflow-hidden rounded-full">
+                  <div
+                    class="flex h-2 overflow-hidden rounded-full"
+                    :title="`Agree: ${active.agree} · Abstain: ${active.abstain} · Disagree: ${active.disagree}`"
+                  >
+                    <div class="bg-success" :style="`flex: ${active.agree}`"></div>
+                    <div class="bg-base-300" :style="`flex: ${active.abstain}`"></div>
+                    <div class="bg-error" :style="`flex: ${active.disagree}`"></div>
+                  </div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span
+                    class="btn btn-xs"
+                    :class="active.user_opinion === 'agree' ? 'btn-success' : 'btn-success btn-outline'"
+                  >
+                    Agree <span class="badge badge-xs" x-text="active.agree"></span>
+                  </span>
+                  <span
+                    class="btn btn-xs"
+                    :class="active.user_opinion === 'abstain' ? 'btn-ghost' : 'btn-ghost btn-outline'"
+                  >
+                    Abstain <span class="badge badge-xs" x-text="active.abstain"></span>
+                  </span>
+                  <span
+                    class="btn btn-xs"
+                    :class="active.user_opinion === 'disagree' ? 'btn-error' : 'btn-error btn-outline'"
+                  >
+                    Disagree <span class="badge badge-xs" x-text="active.disagree"></span>
+                  </span>
+                  <span class="ml-auto badge" :class="active.status_badge_class" x-text="active.status"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-center gap-1.5 pt-1">
+            <template x-for="(example, index) in examples" :key="example.author + index">
+              <button
+                type="button"
+                class="h-2.5 w-2.5 rounded-full transition"
+                :class="index === current ? 'bg-primary' : 'bg-base-300'"
+                @click="goTo(index)"
+                :aria-label="`Show example ${index + 1}`"
+              ></button>
+            </template>
+          </div>
+        </div>
+      </div>
     </div>
-    <div class="stat-title">Discussions</div>
-    <div class="stat-value text-primary">Tree-based</div>
-    <div class="stat-desc">Structured, not scattered</div>
+  </section>
+
+  <section class="bg-base-200 px-4 py-16">
+    <div class="mx-auto max-w-6xl">
+      <div class="mb-8 max-w-3xl">
+        <p class="mb-3 text-sm font-semibold uppercase tracking-[0.2em] text-primary">Why Collective exists</p>
+        <h2 class="mb-4 text-4xl font-black tracking-tight sm:text-5xl">
+          Built around clarity, stewardship, and decision memory.
+        </h2>
+        <p class="text-lg text-base-content/65">
+          Collective is for groups that need more than a comment thread. It is designed to help people understand the
+          shape of a conversation, the rules around participation, and the outcome that came from it.
+        </p>
+      </div>
+
+      <div class="grid gap-5 lg:grid-cols-3">
+        <div class="card border border-base-300 bg-base-100 shadow-sm">
+          <div class="card-body">
+            <span class="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <i data-lucide="git-branch-plus" class="h-5 w-5"></i>
+            </span>
+            <h3 class="card-title text-xl">Clarity</h3>
+            <p class="text-base-content/65">
+              The tree structure keeps big conversations readable by letting topics branch instead of pile up.
+            </p>
+          </div>
+        </div>
+
+        <div class="card border border-base-300 bg-base-100 shadow-sm">
+          <div class="card-body">
+            <span class="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-secondary/10 text-secondary">
+              <i data-lucide="shield" class="h-5 w-5"></i>
+            </span>
+            <h3 class="card-title text-xl">Stewardship</h3>
+            <p class="text-base-content/65">
+              Roles, permissions, moderation, and participant management are core parts of the product, not add-ons.
+            </p>
+          </div>
+        </div>
+
+        <div class="card border border-base-300 bg-base-100 shadow-sm">
+          <div class="card-body">
+            <span class="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-success/10 text-success">
+              <i data-lucide="history" class="h-5 w-5"></i>
+            </span>
+            <h3 class="card-title text-xl">Decision memory</h3>
+            <p class="text-base-content/65">
+              Opinions, reactions, revisions, and resolution states help a group remember what changed and why.
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
-    <div class="stat place-items-center">
-    <div class="stat-figure text-secondary">
-        <i data-lucide="shield" class="w-8 h-8"></i>
+  </section>
+
+  <section class="px-4 py-16">
+    <div class="mx-auto max-w-6xl">
+      <div class="mb-8 max-w-3xl">
+        <p class="mb-3 text-sm font-semibold uppercase tracking-[0.2em] text-primary">Why it feels different</p>
+        <h2 class="mb-4 text-4xl font-black tracking-tight sm:text-5xl">
+          Better than choosing between chat chaos and flat forums.
+        </h2>
+        <p class="text-lg text-base-content/65">
+          Most platforms are good at collecting activity. Collective is built to keep complex discussion understandable.
+        </p>
+      </div>
+
+      <div class="grid gap-5 lg:grid-cols-3">
+        <div class="card border border-base-300 bg-base-100 shadow-sm">
+          <div class="card-body gap-4">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-[0.2em] text-base-content/45">Most tools</p>
+              <h3 class="mt-2 text-xl font-bold">Flat conversation</h3>
+              <p class="mt-2 text-base-content/65">
+                New messages push older context down the page, and subtopics get buried.
+              </p>
+            </div>
+            <div class="divider my-0"></div>
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-[0.2em] text-primary">Collective</p>
+              <p class="mt-2 text-base-content/75">
+                Discussions branch into sub-discussions, so the structure stays visible as the topic grows.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card border border-base-300 bg-base-100 shadow-sm">
+          <div class="card-body gap-4">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-[0.2em] text-base-content/45">Most tools</p>
+              <h3 class="mt-2 text-xl font-bold">Governance on the side</h3>
+              <p class="mt-2 text-base-content/65">
+                Permissions and moderation are limited, unclear, or handled outside the main workflow.
+              </p>
+            </div>
+            <div class="divider my-0"></div>
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-[0.2em] text-secondary">Collective</p>
+              <p class="mt-2 text-base-content/75">
+                Roles decide who can post, draft, moderate, restructure discussion, or manage participants.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card border border-base-300 bg-base-100 shadow-sm">
+          <div class="card-body gap-4">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-[0.2em] text-base-content/45">Most tools</p>
+              <h3 class="mt-2 text-xl font-bold">Weak memory</h3>
+              <p class="mt-2 text-base-content/65">
+                Decisions disappear into scrollback and later readers have to reconstruct what happened.
+              </p>
+            </div>
+            <div class="divider my-0"></div>
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-[0.2em] text-success">Collective</p>
+              <p class="mt-2 text-base-content/75">
+                Resolution states, edit history, opinions, and reactions stay attached to the exact topic.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
-    <div class="stat-title">Roles</div>
-    <div class="stat-value text-secondary">Fine-grained</div>
-    <div class="stat-desc">Facilitators, members, observers</div>
+  </section>
+
+  <section class="bg-base-200 px-4 py-16">
+    <div class="mx-auto max-w-6xl">
+      <div class="mb-8 max-w-3xl">
+        <p class="mb-3 text-sm font-semibold uppercase tracking-[0.2em] text-primary">What you can do</p>
+        <h2 class="mb-4 text-4xl font-black tracking-tight sm:text-5xl">
+          Features that support serious discussion without making the interface hard to use.
+        </h2>
+      </div>
+
+      <div class="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+        <div class="card border border-base-300 bg-base-100 shadow-sm">
+          <div class="card-body">
+            <i data-lucide="git-branch-plus" class="mb-3 h-6 w-6 text-primary"></i>
+            <h3 class="card-title text-lg">Tree-structured discussion</h3>
+            <p class="text-base-content/60">
+              Break large topics into focused branches while keeping them connected to the whole.
+            </p>
+          </div>
+        </div>
+
+        <div class="card border border-base-300 bg-base-100 shadow-sm">
+          <div class="card-body">
+            <i data-lucide="file-pen-line" class="mb-3 h-6 w-6 text-secondary"></i>
+            <h3 class="card-title text-lg">Drafts and revision history</h3>
+            <p class="text-base-content/60">
+              Write carefully, publish when ready, and keep a visible record of edits over time.
+            </p>
+          </div>
+        </div>
+
+        <div class="card border border-base-300 bg-base-100 shadow-sm">
+          <div class="card-body">
+            <i data-lucide="check-check" class="mb-3 h-6 w-6 text-success"></i>
+            <h3 class="card-title text-lg">Explicit resolution states</h3>
+            <p class="text-base-content/60">
+              Accept, reject, close, and reopen discussions so outcomes are easy to understand later.
+            </p>
+          </div>
+        </div>
+
+        <div class="card border border-base-300 bg-base-100 shadow-sm">
+          <div class="card-body">
+            <i data-lucide="shield" class="mb-3 h-6 w-6 text-warning"></i>
+            <h3 class="card-title text-lg">Roles and permissions</h3>
+            <p class="text-base-content/60">
+              Support facilitators, moderators, members, observers, and custom roles with clear capabilities.
+            </p>
+          </div>
+        </div>
+
+        <div class="card border border-base-300 bg-base-100 shadow-sm">
+          <div class="card-body">
+            <i data-lucide="messages-square" class="mb-3 h-6 w-6 text-error"></i>
+            <h3 class="card-title text-lg">Opinions and reactions</h3>
+            <p class="text-base-content/60">
+              Show agreement, disagreement, and lightweight feedback without flattening everything into one vote.
+            </p>
+          </div>
+        </div>
+
+        <div class="card border border-base-300 bg-base-100 shadow-sm">
+          <div class="card-body">
+            <i data-lucide="file-up" class="mb-3 h-6 w-6 text-info"></i>
+            <h3 class="card-title text-lg">Import from DOCX or Markdown</h3>
+            <p class="text-base-content/60">
+              Start from real agendas, proposals, or working docs instead of rebuilding the structure by hand.
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
-    <div class="stat place-items-center">
-    <div class="stat-figure text-accent">
-        <i data-lucide="check-circle-2" class="w-8 h-8"></i>
+  </section>
+
+  <section class="px-4 py-16">
+    <div class="mx-auto max-w-6xl">
+      <div class="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div class="max-w-3xl">
+          <p class="mb-3 text-sm font-semibold uppercase tracking-[0.2em] text-primary">How it works</p>
+          <h2 class="text-4xl font-black tracking-tight sm:text-5xl">
+            A simple flow for discussions that need more than comments.
+          </h2>
+        </div>
+      </div>
+
+      <div class="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+        <div class="card bg-base-100 shadow-sm">
+          <div class="card-body">
+            <span class="badge badge-primary badge-lg mb-3 w-fit">1</span>
+            <h3 class="card-title text-xl">Create a space</h3>
+            <p class="text-base-content/65">
+              Start a public or invite-only space for a team, community, or working group.
+            </p>
+          </div>
+        </div>
+
+        <div class="card bg-base-100 shadow-sm">
+          <div class="card-body">
+            <span class="badge badge-secondary badge-lg mb-3 w-fit">2</span>
+            <h3 class="card-title text-xl">Map the discussion</h3>
+            <p class="text-base-content/65">
+              Begin with a root topic and add sub-discussions as the conversation becomes more specific.
+            </p>
+          </div>
+        </div>
+
+        <div class="card bg-base-100 shadow-sm">
+          <div class="card-body">
+            <span class="badge badge-accent badge-lg mb-3 w-fit">3</span>
+            <h3 class="card-title text-xl">Discuss with care</h3>
+            <p class="text-base-content/65">
+              Post, draft, react, and express opinions with permissions that match each role.
+            </p>
+          </div>
+        </div>
+
+        <div class="card bg-base-100 shadow-sm">
+          <div class="card-body">
+            <span class="badge badge-success badge-lg mb-3 w-fit">4</span>
+            <h3 class="card-title text-xl">Keep the outcome</h3>
+            <p class="text-base-content/65">
+              Resolve the discussion and leave a readable record of how the group got there.
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
-    <div class="stat-title">Outcomes</div>
-    <div class="stat-value text-accent">Tracked</div>
-    <div class="stat-desc">Accept, reject, or close</div>
+  </section>
+
+  <section class="px-4 pb-16">
+    <div class="mx-auto max-w-5xl">
+      <div class="card border border-base-300 bg-base-100 shadow-xl">
+        <div class="card-body items-center p-8 text-center sm:p-12">
+          <p class="mb-3 text-sm font-semibold uppercase tracking-[0.2em] text-primary">
+            Start with a clearer discussion space
+          </p>
+          <h2 class="mb-4 max-w-3xl text-4xl font-black tracking-tight sm:text-5xl">
+            Give your group a place to think.
+          </h2>
+          <p class="mb-8 max-w-2xl text-lg text-base-content/65">
+            Create a space, set the rules for participation, and let the conversation grow without becoming harder to
+            understand.
+          </p>
+          <div class="flex flex-wrap justify-center gap-3">
+            <a href="{% url 'account_signup' %}" class="btn btn-primary btn-lg">
+              Create your first space
+              <i data-lucide="arrow-right" class="h-4 w-4"></i>
+            </a>
+            <a href="{% url 'spaces:list' %}" class="btn btn-secondary btn-lg">Explore public spaces</a>
+            <a href="{% url 'account_login' %}" class="btn btn-outline btn-lg">I already have an account</a>
+          </div>
+        </div>
+      </div>
     </div>
+  </section>
+
+  <footer class="footer footer-center px-4 pb-8 text-sm text-base-content/50">
+    <p>© {% now "Y" %} Collective. Built for clarity, stewardship, and decision memory.</p>
+  </footer>
 </div>
+{% endblock %}
 
-{# ── Features ──────────────────────────────────────────────────────────── #}
-<section class="py-24 px-4">
-  <div class="max-w-5xl mx-auto">
-    <div class="text-center mb-16">
-      <h2 class="text-3xl sm:text-4xl font-bold mb-3">Everything your group needs</h2>
-      <p class="text-base-content/50 text-lg">One platform, from first idea to final decision.</p>
-    </div>
-    <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-
-      <div class="card bg-base-100 shadow-sm border border-base-200 feature-card">
-        <div class="card-body gap-4">
-          <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-            <i data-lucide="git-branch" class="w-5 h-5 text-primary"></i>
-          </div>
-          <div>
-            <h3 class="card-title text-base mb-1">Structured discussions</h3>
-            <p class="text-sm text-base-content/60 leading-relaxed">
-              Organise conversations in a tree of topics and sub-topics so nothing gets lost in a flat chat.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div class="card bg-base-100 shadow-sm border border-base-200 feature-card">
-        <div class="card-body gap-4">
-          <div class="w-10 h-10 rounded-xl bg-secondary/10 flex items-center justify-center">
-            <i data-lucide="thumbs-up" class="w-5 h-5 text-secondary"></i>
-          </div>
-          <div>
-            <h3 class="card-title text-base mb-1">Opinions &amp; reactions</h3>
-            <p class="text-sm text-base-content/60 leading-relaxed">
-              Agree, disagree, or abstain on any discussion. React to individual posts with likes and dislikes.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div class="card bg-base-100 shadow-sm border border-base-200 feature-card">
-        <div class="card-body gap-4">
-          <div class="w-10 h-10 rounded-xl bg-success/10 flex items-center justify-center">
-            <i data-lucide="check-circle-2" class="w-5 h-5 text-success"></i>
-          </div>
-          <div>
-            <h3 class="card-title text-base mb-1">Resolution tracking</h3>
-            <p class="text-sm text-base-content/60 leading-relaxed">
-              Accept, reject, or close discussions to capture outcomes and keep the group moving forward.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div class="card bg-base-100 shadow-sm border border-base-200 feature-card">
-        <div class="card-body gap-4">
-          <div class="w-10 h-10 rounded-xl bg-warning/10 flex items-center justify-center">
-            <i data-lucide="bell" class="w-5 h-5 text-warning"></i>
-          </div>
-          <div>
-            <h3 class="card-title text-base mb-1">Subscriptions &amp; notifications</h3>
-            <p class="text-sm text-base-content/60 leading-relaxed">
-              Subscribe to the topics you care about and get notified when something new happens.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div class="card bg-base-100 shadow-sm border border-base-200 feature-card">
-        <div class="card-body gap-4">
-          <div class="w-10 h-10 rounded-xl bg-error/10 flex items-center justify-center">
-            <i data-lucide="shield" class="w-5 h-5 text-error"></i>
-          </div>
-          <div>
-            <h3 class="card-title text-base mb-1">Flexible roles &amp; permissions</h3>
-            <p class="text-sm text-base-content/60 leading-relaxed">
-              Define facilitators, members, and observers with fine-grained permissions tailored to your group.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div class="card bg-base-100 shadow-sm border border-base-200 feature-card">
-        <div class="card-body gap-4">
-          <div class="w-10 h-10 rounded-xl bg-info/10 flex items-center justify-center">
-            <i data-lucide="upload" class="w-5 h-5 text-info"></i>
-          </div>
-          <div>
-            <h3 class="card-title text-base mb-1">Import from DOCX &amp; Markdown</h3>
-            <p class="text-sm text-base-content/60 leading-relaxed">
-              Seed a space instantly from a structured document — great for workshops and pre-planned agendas.
-            </p>
-          </div>
-        </div>
-      </div>
-
-    </div>
-  </div>
-</section>
-
-{# ── How it works ──────────────────────────────────────────────────────── #}
-<section class="py-24 -mx-4 bg-base-100">
-  <div class="max-w-5xl mx-auto px-4">
-    <div class="text-center mb-16">
-      <h2 class="text-3xl sm:text-4xl font-bold mb-3">How it works</h2>
-      <p class="text-base-content/50 text-lg">Up and running in minutes.</p>
-    </div>
-
-    <div class="grid gap-8 md:grid-cols-3">
-      <div class="flex flex-col items-center text-center gap-4">
-        <div class="w-14 h-14 rounded-2xl bg-primary flex items-center justify-center shadow-lg shadow-primary/30">
-          <i data-lucide="plus-circle" class="w-7 h-7 text-primary-content"></i>
-        </div>
-        <div class="badge badge-primary badge-sm">Step 1</div>
-        <div>
-          <h3 class="font-bold text-lg mb-2">Create a space</h3>
-          <p class="text-sm text-base-content/60 leading-relaxed">
-            Give your group a home. Configure roles and invite participants via a shareable link.
-          </p>
-        </div>
-      </div>
-
-      <div class="flex flex-col items-center text-center gap-4">
-        <div class="w-14 h-14 rounded-2xl bg-secondary flex items-center justify-center shadow-lg shadow-secondary/30">
-          <i data-lucide="git-branch" class="w-7 h-7 text-secondary-content"></i>
-        </div>
-        <div class="badge badge-secondary badge-sm">Step 2</div>
-        <div>
-          <h3 class="font-bold text-lg mb-2">Build the discussion tree</h3>
-          <p class="text-sm text-base-content/60 leading-relaxed">
-            Facilitators shape a hierarchy of topics. Participants post, react, and express opinions.
-          </p>
-        </div>
-      </div>
-
-      <div class="flex flex-col items-center text-center gap-4">
-        <div class="w-14 h-14 rounded-2xl bg-success flex items-center justify-center shadow-lg shadow-success/30">
-          <i data-lucide="check-circle-2" class="w-7 h-7 text-success-content"></i>
-        </div>
-        <div class="badge badge-success badge-sm">Step 3</div>
-        <div>
-          <h3 class="font-bold text-lg mb-2">Resolve &amp; archive</h3>
-          <p class="text-sm text-base-content/60 leading-relaxed">
-            Mark discussions as accepted, rejected, or closed. The record stays forever.
-          </p>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-{# ── Use cases ─────────────────────────────────────────────────────────── #}
-<section class="py-24 px-4">
-  <div class="max-w-5xl mx-auto">
-    <div class="text-center mb-16">
-      <h2 class="text-3xl sm:text-4xl font-bold mb-3">Built for every group</h2>
-      <p class="text-base-content/50 text-lg">From intimate teams to large communities.</p>
-    </div>
-
-    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <div class="card bg-base-100 border border-base-200 text-center">
-        <div class="card-body gap-3 items-center py-6">
-          <i data-lucide="building-2" class="w-8 h-8 text-primary"></i>
-          <h3 class="font-semibold">Organisations</h3>
-          <p class="text-xs text-base-content/50">Strategic planning and policy review</p>
-        </div>
-      </div>
-      <div class="card bg-base-100 border border-base-200 text-center">
-        <div class="card-body gap-3 items-center py-6">
-          <i data-lucide="graduation-cap" class="w-8 h-8 text-secondary"></i>
-          <h3 class="font-semibold">Academia</h3>
-          <p class="text-xs text-base-content/50">Research discussions and peer review</p>
-        </div>
-      </div>
-      <div class="card bg-base-100 border border-base-200 text-center">
-        <div class="card-body gap-3 items-center py-6">
-          <i data-lucide="users" class="w-8 h-8 text-success"></i>
-          <h3 class="font-semibold">Communities</h3>
-          <p class="text-xs text-base-content/50">Open forums and public consultations</p>
-        </div>
-      </div>
-      <div class="card bg-base-100 border border-base-200 text-center">
-        <div class="card-body gap-3 items-center py-6">
-          <i data-lucide="code-2" class="w-8 h-8 text-warning"></i>
-          <h3 class="font-semibold">Teams</h3>
-          <p class="text-xs text-base-content/50">Engineering RFCs and design decisions</p>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-{# ── CTA ───────────────────────────────────────────────────────────────── #}
-<section class="py-24 -mx-4 bg-base-100">
-  <div class="max-w-2xl mx-auto px-4 text-center">
-    <h2 class="text-3xl sm:text-4xl font-bold mb-4">Ready to bring clarity to your group?</h2>
-    <p class="text-base-content/60 text-lg mb-10 leading-relaxed">
-      Start a space in under a minute.
-    </p>
-    <a href="{% url 'account_signup' %}" class="btn btn-primary btn-lg shadow-lg shadow-primary/30">
-      Create your first space
-      <i data-lucide="arrow-right" class="w-4 h-4"></i>
-    </a>
-    <p class="mt-4 text-sm text-base-content/40">
-      Already have an account?
-      <a href="{% url 'account_login' %}" class="link link-primary">Sign in</a>
-    </p>
-  </div>
-</section>
-
-{# ── Footer ────────────────────────────────────────────────────────────── #}
-<footer class="footer footer-center bg-base-200 text-base-content/50 rounded p-6 -mx-4 text-sm">
-  <p>© {% now "Y" %} Collective. Built for thoughtful dialogue.</p>
-</footer>
-
+{% block extra_scripts %}
+<script nonce="{{ csp_nonce }}">
+  function landingHeroExamples() {
+    return {
+      current: 0,
+      intervalId: null,
+      visible: true,
+      examples: [
+        {
+          root: "Annual planning",
+          branch: "Budget priorities",
+          focus: "Pilot a community grant round",
+          author: "Avery Chen",
+          role: "Moderator",
+          age: "2 hours ago",
+          content: "Start with a smaller grant round in one neighborhood, document what works, then expand if the process is fair and manageable.",
+          like_count: 8,
+          dislike_count: 1,
+          user_reaction: "like",
+          agree: 12,
+          abstain: 3,
+          disagree: 2,
+          user_opinion: "agree",
+          status: "Accepted",
+          status_badge_class: "badge-success"
+        },
+        {
+          root: "Volunteer coordination",
+          branch: "Shift coverage",
+          focus: "Weekend onboarding sessions",
+          author: "Jordan Lee",
+          role: "Facilitator",
+          age: "45 minutes ago",
+          content: "Let new volunteers choose one short orientation slot before they can self-assign weekend shifts. That keeps the schedule open while reducing no-shows.",
+          like_count: 5,
+          dislike_count: 0,
+          user_reaction: "like",
+          agree: 9,
+          abstain: 2,
+          disagree: 1,
+          user_opinion: "agree",
+          status: "Accepted",
+          status_badge_class: "badge-success"
+        },
+        {
+          root: "Product roadmap",
+          branch: "Member onboarding",
+          focus: "Guided first-run checklist",
+          author: "Sam Rivera",
+          role: "Member",
+          age: "1 day ago",
+          content: "A lightweight checklist would help first-time members understand roles, spaces, and posting norms without needing a long tutorial.",
+          like_count: 14,
+          dislike_count: 2,
+          user_reaction: "",
+          agree: 18,
+          abstain: 4,
+          disagree: 3,
+          user_opinion: "abstain",
+          status: "Open",
+          status_badge_class: "badge-outline"
+        },
+        {
+          root: "Community guidelines",
+          branch: "Meeting etiquette",
+          focus: "Require camera-on participation",
+          author: "Priya Nair",
+          role: "Observer",
+          age: "3 hours ago",
+          content: "Requiring cameras for every meeting may exclude members with limited bandwidth or privacy constraints. We should encourage it, not require it.",
+          like_count: 4,
+          dislike_count: 9,
+          user_reaction: "dislike",
+          agree: 3,
+          abstain: 2,
+          disagree: 11,
+          user_opinion: "disagree",
+          status: "Rejected",
+          status_badge_class: "badge-error"
+        },
+        {
+          root: "Research review",
+          branch: "Evidence gathering",
+          focus: "Summarize opposing findings",
+          author: "Morgan Patel",
+          role: "Custom",
+          age: "6 hours ago",
+          content: "Before we resolve this thread, we should add a short summary of the strongest opposing findings so later readers understand the tradeoffs.",
+          like_count: 6,
+          dislike_count: 1,
+          user_reaction: "",
+          agree: 10,
+          abstain: 6,
+          disagree: 2,
+          user_opinion: "abstain",
+          status: "Closed",
+          status_badge_class: "badge-warning"
+        },
+        {
+          root: "Neighborhood projects",
+          branch: "Shared garden",
+          focus: "Seasonal maintenance rota",
+          author: "Elena Brooks",
+          role: "Moderator",
+          age: "30 minutes ago",
+          content: "A monthly rota is easier to sustain than asking for open-ended volunteers. We can rotate watering, cleanup, and supply checks by block.",
+          like_count: 11,
+          dislike_count: 3,
+          user_reaction: "like",
+          agree: 15,
+          abstain: 2,
+          disagree: 4,
+          user_opinion: "agree",
+          status: "Accepted",
+          status_badge_class: "badge-success"
+        }
+      ],
+      get active() {
+        return this.examples[this.current];
+      },
+      init() {
+        this.intervalId = window.setInterval(() => {
+          this.next();
+        }, 10000);
+      },
+      next() {
+        this.swapTo((this.current + 1) % this.examples.length);
+      },
+      goTo(index) {
+        if (index === this.current) {
+          return;
+        }
+        this.swapTo(index);
+      },
+      swapTo(index) {
+        this.visible = false;
+        window.setTimeout(() => {
+          this.current = index;
+          this.visible = true;
+        }, 220);
+      }
+    };
+  }
+</script>
 {% endblock %}

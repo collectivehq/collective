@@ -52,14 +52,18 @@
           </td>
           <td>
             {% if can_set_permissions and p.user != user %}
-              <form method="post" action="{% url 'spaces:participant_role_update' space_id=space.pk participant_id=p.pk %}" class="inline flex gap-1 items-center">
+              <form method="post"
+                    action="{% url 'spaces:participant_role_update' space_id=space.pk participant_id=p.pk %}"
+                    class="flex flex-wrap items-center gap-2">
                 {% csrf_token %}
-                <select name="role_id" class="select select-xs"
-                        onchange="this.form.submit()">
+                <select name="role_id" class="select select-xs">
                   {% for role in roles %}
                     <option value="{{ role.pk }}" {% if role.pk == p.role.pk %}selected{% endif %}>{{ role.label }}</option>
                   {% endfor %}
                 </select>
+                <button type="submit" class="btn btn-ghost btn-xs gap-1">
+                  <i data-lucide="save" class="w-3 h-3"></i> Save
+                </button>
               </form>
             {% else %}
               <span class="badge badge-outline badge-sm">{{ p.role.label }}</span>

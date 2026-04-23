@@ -24,6 +24,15 @@
       <textarea name="information" id="id_information" class="textarea tinymce-editor w-full" rows="8" placeholder="Optional information shown in the space info dialog">{{ form.information.value|default:'' }}</textarea>
       {% if form.information.errors %}<p class="text-error text-sm mt-1">{{ form.information.errors.0 }}</p>{% endif %}
     </div>
+    <label class="flex items-start gap-3 rounded-box border border-base-300 bg-base-100 px-4 py-3 cursor-pointer">
+      <input type="checkbox" name="is_public" id="id_is_public" class="checkbox checkbox-sm mt-0.5"
+             {% if form.is_public.value != False and form.is_public.value != 'False' and form.is_public.value != 'false' and form.is_public.value != '' %}checked{% endif %}>
+      <span class="space-y-1">
+        <span class="block text-sm font-medium">Public space</span>
+        <span class="block text-xs text-base-content/60">Private spaces are hidden from listings and can only be joined through invite links.</span>
+      </span>
+    </label>
+    {% if form.is_public.errors %}<p class="text-error text-sm mt-1">{{ form.is_public.errors.0 }}</p>{% endif %}
     <details class="rounded-box border border-base-300 bg-base-100/70">
       <summary class="cursor-pointer px-4 py-3 font-medium select-none">Import space from file</summary>
       <div class="px-4 pb-4 pt-2 space-y-4">

@@ -11,13 +11,13 @@ from apps.core.rate_limits import allow_toggle_request
 from apps.discussions.models import Discussion
 from apps.opinions import services as opinion_services
 from apps.opinions.permissions import can_opine
-from apps.spaces.request_context import get_active_space_request_context
+from apps.spaces.request_context import get_space_request_context
 
 
 @require_POST
 @login_required
 def toggle_opinion(request: HttpRequest, space_id: str, discussion_id: str) -> HttpResponse:
-    context = get_active_space_request_context(request, space_id)
+    context = get_space_request_context(request, space_id)
     space = context.space
     user = context.user
     participant = context.participant

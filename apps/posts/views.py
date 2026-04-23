@@ -17,14 +17,23 @@ from django.views.decorators.http import require_GET, require_POST
 from apps.discussions import services as discussion_services
 from apps.discussions.constants import VALID_RESOLUTION_TYPES
 from apps.discussions.models import Discussion
-from apps.discussions.permissions import can_reorganise, can_resolve_discussion, can_shape_tree
+from apps.discussions.permissions import can_reopen_discussion, can_reorganise, can_resolve_discussion
 from apps.discussions.views import discussion_detail
 from apps.posts import services as post_services
 from apps.posts.models import Link, Post, PostRevision
-from apps.posts.permissions import can_post_to_discussion, can_view_post, get_post_edit_denial_reason
+from apps.posts.permissions import (
+    can_create_draft,
+    can_delete_post,
+    can_post_to_discussion,
+    can_promote_post,
+    can_upload_images,
+    can_view_history,
+    can_view_post,
+    get_post_edit_denial_reason,
+)
 from apps.spaces.models import Space
-from apps.spaces.permissions import can_moderate
-from apps.spaces.request_context import get_active_space_request_context, get_space_request_context
+from apps.spaces.permissions import can_moderate_content
+from apps.spaces.request_context import get_space_request_context
 
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 EXT_FOR_TYPE = {"image/jpeg": "jpg", "image/png": "png", "image/gif": "gif", "image/webp": "webp"}
@@ -54,7 +63,7 @@ def _get_content_item(pk: str, space: Space) -> Post | Link | None:
 @require_POST
 @login_required
 def post_create(request: HttpRequest, space_id: str, discussion_id: str) -> HttpResponse:
-    context = get_active_space_request_context(request, space_id)
+    context = get_space_request_context(request, space_id)
     space = context.space
     user = context.user
     participant = context.participant
@@ -64,20 +73,22 @@ def post_create(request: HttpRequest, space_id: str, discussion_id: str) -> Http
         space=space,
         deleted_at__isnull=True,
     )
-    if not can_post_to_discussion(user, discussion, participant=participant):
-        raise PermissionDenied
-
     content = request.POST.get("content", "").strip()
     if not content:
         return HttpResponse("Content is required", status=400)
 
+    save_as_draft = "save_draft" in request.POST
+    if save_as_draft:
+        if not can_create_draft(user, space, participant=participant):
+            raise PermissionDenied
+    elif not can_post_to_discussion(user, discussion, participant=participant):
+        raise PermissionDenied
+
     resolution = request.POST.get("resolution", "")
     if resolution and resolution not in VALID_RESOLUTION_TYPES:
         resolution = ""
-    if resolution and not can_resolve_discussion(user, discussion, participant=participant):
+    if resolution and (save_as_draft or not can_resolve_discussion(user, discussion, participant=participant)):
         resolution = ""
-
-    save_as_draft = "save_draft" in request.POST
 
     try:
         with transaction.atomic():
@@ -86,13 +97,18 @@ def post_create(request: HttpRequest, space_id: str, discussion_id: str) -> Http
                 author=user,
                 content=content,
                 is_draft=save_as_draft,
+                participant=participant,
             )
 
             if not save_as_draft and resolution:
                 discussion_services.resolve_discussion(
                     discussion=discussion, resolution_type=resolution, resolved_by=user
                 )
-            elif not save_as_draft and discussion.resolution_type:
+            elif (
+                not save_as_draft
+                and discussion.resolution_type
+                and can_reopen_discussion(user, discussion, participant=participant)
+            ):
                 discussion_services.reopen_discussion(discussion=discussion, actor=user)
     except ValueError as error:
         return HttpResponse(str(error), status=400)
@@ -105,7 +121,7 @@ def post_create(request: HttpRequest, space_id: str, discussion_id: str) -> Http
 @require_POST
 @login_required
 def post_edit(request: HttpRequest, space_id: str, post_id: str) -> HttpResponse:
-    context = get_active_space_request_context(request, space_id)
+    context = get_space_request_context(request, space_id)
     space = context.space
     user = context.user
     participant = context.participant
@@ -125,6 +141,8 @@ def post_edit(request: HttpRequest, space_id: str, post_id: str) -> HttpResponse
     parent = post.get_parent()
     publish_draft = post.is_draft and "publish" in request.POST
     keep_as_draft = post.is_draft and not publish_draft
+    if publish_draft and not can_post_to_discussion(user, parent, participant=participant):
+        raise PermissionDenied
 
     with transaction.atomic():
         post_services.update_post(
@@ -133,16 +151,16 @@ def post_edit(request: HttpRequest, space_id: str, post_id: str) -> HttpResponse
             is_draft=keep_as_draft,
             actor=user,
         )
-        if publish_draft and parent and parent.resolution_type:
+        if publish_draft and parent.resolution_type and can_reopen_discussion(user, parent, participant=participant):
             discussion_services.reopen_discussion(discussion=parent, actor=user)
 
-    return discussion_detail(request, space_id, str(parent.pk) if parent else str(post.pk))
+    return discussion_detail(request, space_id, str(parent.pk))
 
 
 @require_POST
 @login_required
 def post_publish(request: HttpRequest, space_id: str, post_id: str) -> HttpResponse:
-    context = get_active_space_request_context(request, space_id)
+    context = get_space_request_context(request, space_id)
     space = context.space
     user = context.user
     participant = context.participant
@@ -159,6 +177,8 @@ def post_publish(request: HttpRequest, space_id: str, post_id: str) -> HttpRespo
         return HttpResponse("Post is already published", status=400)
 
     parent = post.get_parent()
+    if not can_post_to_discussion(user, parent, participant=participant):
+        raise PermissionDenied
 
     with transaction.atomic():
         post_services.update_post(
@@ -167,10 +187,10 @@ def post_publish(request: HttpRequest, space_id: str, post_id: str) -> HttpRespo
             is_draft=False,
             actor=user,
         )
-        if parent and parent.resolution_type:
+        if parent.resolution_type and can_reopen_discussion(user, parent, participant=participant):
             discussion_services.reopen_discussion(discussion=parent, actor=user)
 
-    response = discussion_detail(request, space_id, str(parent.pk) if parent else str(post.pk))
+    response = discussion_detail(request, space_id, str(parent.pk))
     response["HX-Trigger"] = "refreshTree"
     return response
 
@@ -178,19 +198,19 @@ def post_publish(request: HttpRequest, space_id: str, post_id: str) -> HttpRespo
 @require_POST
 @login_required
 def post_delete(request: HttpRequest, space_id: str, post_id: str) -> HttpResponse:
-    context = get_active_space_request_context(request, space_id)
+    context = get_space_request_context(request, space_id)
     space = context.space
     user = context.user
     participant = context.participant
     post = get_object_or_404(Post, pk=post_id, discussion__space=space, deleted_at__isnull=True)
     if not can_view_post(user, post, participant=participant):
         raise PermissionDenied
-    if post.author != user and not can_moderate(user, space, participant=participant):
+    if not can_delete_post(user, post, space, participant=participant):
         raise PermissionDenied
 
     parent = post.get_parent()
     post_services.delete_post(post=post)
-    response = discussion_detail(request, space_id, str(parent.pk) if parent else post_id)
+    response = discussion_detail(request, space_id, str(parent.pk))
     response["HX-Trigger"] = "refreshTree"
     return response
 
@@ -198,17 +218,17 @@ def post_delete(request: HttpRequest, space_id: str, post_id: str) -> HttpRespon
 @require_POST
 @login_required
 def link_delete(request: HttpRequest, space_id: str, link_id: str) -> HttpResponse:
-    context = get_active_space_request_context(request, space_id)
+    context = get_space_request_context(request, space_id)
     space = context.space
     user = context.user
     participant = context.participant
     link = get_object_or_404(Link, pk=link_id, discussion__space=space, deleted_at__isnull=True)
-    if not can_moderate(user, space, participant=participant):
+    if not can_moderate_content(user, space, participant=participant):
         raise PermissionDenied
 
     parent = link.get_parent()
     post_services.delete_link(link=link)
-    response = discussion_detail(request, space_id, str(parent.pk) if parent else link_id)
+    response = discussion_detail(request, space_id, str(parent.pk))
     response["HX-Trigger"] = "refreshTree"
     return response
 
@@ -216,7 +236,7 @@ def link_delete(request: HttpRequest, space_id: str, link_id: str) -> HttpRespon
 @require_POST
 @login_required
 def discussion_item_move(request: HttpRequest, space_id: str, item_id: str) -> HttpResponse:
-    context = get_active_space_request_context(request, space_id)
+    context = get_space_request_context(request, space_id)
     space = context.space
     user = context.user
     participant = context.participant
@@ -245,7 +265,7 @@ def discussion_item_move(request: HttpRequest, space_id: str, item_id: str) -> H
     original_parent = item.get_parent()
     post_services.move_discussion_item(item=item, target_discussion=target, position=position)
 
-    selected = target.pk if original_parent is None or original_parent.pk != target.pk else original_parent.pk
+    selected = target.pk if original_parent.pk != target.pk else original_parent.pk
     response = discussion_detail(request, space_id, str(selected))
     response["HX-Trigger"] = json.dumps(
         {
@@ -283,7 +303,9 @@ def discussion_item_move_positions(request: HttpRequest, space_id: str, item_id:
     children = [
         child
         for child in discussion_services.get_discussion_children(discussion)
-        if (child.is_post or child.is_link) and str(child.pk) != str(item_id)
+        if (child.is_post or child.is_link)
+        and str(child.pk) != str(item_id)
+        and (not child.is_post or can_view_post(user, cast(Post, child), participant=participant))
     ]
     children.append(item)
     return render(
@@ -296,14 +318,14 @@ def discussion_item_move_positions(request: HttpRequest, space_id: str, item_id:
 @require_POST
 @login_required
 def post_promote(request: HttpRequest, space_id: str, post_id: str) -> HttpResponse:
-    context = get_active_space_request_context(request, space_id)
+    context = get_space_request_context(request, space_id)
     space = context.space
     user = context.user
     participant = context.participant
     post = get_object_or_404(Post, pk=post_id, discussion__space=space, deleted_at__isnull=True)
     if not can_view_post(user, post, participant=participant):
         raise PermissionDenied
-    if not can_shape_tree(user, space, participant=participant):
+    if not can_promote_post(user, space, participant=participant):
         raise PermissionDenied
     if post.is_draft:
         return HttpResponse("Draft posts cannot be promoted", status=400)
@@ -311,7 +333,7 @@ def post_promote(request: HttpRequest, space_id: str, post_id: str) -> HttpRespo
     parent = post.get_parent()
     new_discussion, _link = post_services.promote_post_to_discussion(post=post)
 
-    response = discussion_detail(request, space_id, str(parent.pk) if parent else str(post.pk))
+    response = discussion_detail(request, space_id, str(parent.pk))
     response["HX-Trigger"] = json.dumps({"selectDiscussion": {"id": str(new_discussion.pk), "spaceId": str(space.pk)}})
     return response
 
@@ -328,6 +350,8 @@ def post_revisions(request: HttpRequest, space_id: str, post_id: str) -> HttpRes
     post = get_object_or_404(Post, pk=post_id, discussion__space=space, deleted_at__isnull=True)
     if not can_view_post(user, post, participant=participant):
         raise PermissionDenied
+    if not can_view_history(user, space, participant=participant):
+        raise PermissionDenied
     revisions = PostRevision.objects.filter(post=post).order_by("-created_at") if not post.is_draft else []
     return render(request, "posts/post_revisions.html", {"post": post, "revisions": revisions, "space": space})
 
@@ -336,11 +360,13 @@ def post_revisions(request: HttpRequest, space_id: str, post_id: str) -> HttpRes
 @login_required
 def image_upload(request: HttpRequest, space_id: str) -> HttpResponse:
     """Handle image uploads from TinyMCE editor. Returns JSON with location."""
-    context = get_active_space_request_context(request, space_id)
+    context = get_space_request_context(request, space_id)
+    space = context.space
+    user = context.user
     participant = context.participant
     if participant is None:
         raise PermissionDenied
-    if not participant.role.can_post:
+    if not can_upload_images(user, space, participant=participant):
         raise PermissionDenied
 
     uploaded = request.FILES.get("file")

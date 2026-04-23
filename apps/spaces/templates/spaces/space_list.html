@@ -1,42 +1,82 @@
 {% extends "base.html" %}
 {% block title %}Spaces — Collective{% endblock %}
 {% block content %}
-<div class="flex justify-between items-center mb-6">
-  <h1 class="text-2xl font-bold">Spaces</h1>
+<div class="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+  <div class="space-y-1">
+    <h1 class="text-2xl font-bold">Spaces</h1>
+  </div>
   {% if user.is_authenticated %}
     <a href="{% url 'spaces:create' %}" class="btn btn-primary btn-sm">Create Space</a>
   {% endif %}
 </div>
 
+{% if user.is_authenticated and not participating and public_spaces %}
+<div class="alert alert-soft mb-6">
+  <i data-lucide="compass" class="h-4 w-4"></i>
+  <span>You have not joined any spaces yet. Start with one of the public spaces below.</span>
+</div>
+{% endif %}
+
 {% if participating %}
-<h2 class="text-lg font-semibold mb-3">Your Spaces</h2>
-<div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mb-8">
-  {% for space in participating %}
-    {% url 'spaces:detail' space_id=space.pk as card_url %}
-    {% include "spaces/_space_card.html" with card_url=card_url show_lifecycle=True %}
-  {% endfor %}
-</div>
-{% else %}
-  {% if user.is_authenticated %}
-  <div class="text-center py-8 mb-8">
-    <p class="text-base-content/50">You haven't joined any spaces yet — browse open spaces below.</p>
+<section class="mb-8">
+  <div class="mb-3 flex items-center justify-between gap-3">
+    <h2 class="text-lg font-semibold">Your Spaces</h2>
+    <span class="badge badge-ghost badge-sm">{{ participating|length }}</span>
   </div>
-  {% endif %}
+  <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+    {% for space in participating %}
+      {% url 'spaces:detail' space_id=space.pk as card_url %}
+      {% include "spaces/_space_card.html" with card_url=card_url show_lifecycle=True %}
+    {% endfor %}
+  </div>
+</section>
 {% endif %}
 
-{% if open_spaces %}
-<h2 class="text-lg font-semibold mb-3">Open Spaces</h2>
-<div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-  {% for space in open_spaces %}
-    {% url 'spaces:join' space_id=space.pk as card_url %}
-    {% include "spaces/_space_card.html" with card_url=card_url show_lifecycle=False %}
-  {% endfor %}
-</div>
+{% if public_spaces %}
+<section class="mb-8">
+  <div class="mb-3 flex items-center justify-between gap-3">
+    <div class="space-y-1">
+      <h2 class="text-lg font-semibold">Public Spaces</h2>
+    </div>
+    <span class="badge badge-ghost badge-sm">{{ public_spaces|length }}</span>
+  </div>
+  <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+    {% for space in public_spaces %}
+      {% if space.is_active %}
+        {% url 'spaces:join' space_id=space.pk as card_url %}
+        {% include "spaces/_space_card.html" with card_url=card_url show_lifecycle=True %}
+      {% else %}
+        {% include "spaces/_space_card.html" with card_url="" show_lifecycle=True %}
+      {% endif %}
+    {% endfor %}
+  </div>
+</section>
 {% endif %}
 
-{% if not participating and not open_spaces %}
-<div class="text-center py-12 text-base-content/50">
-  <p>No spaces available yet.</p>
+{% if not participating and not public_spaces %}
+<div class="card card-dash bg-base-100">
+  <div class="card-body items-center py-12 text-center">
+    <div class="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-base-200">
+      <i data-lucide="messages-square" class="h-5 w-5 text-base-content/70"></i>
+    </div>
+    <h2 class="card-title">{% if has_any_spaces %}No public spaces available{% else %}No spaces yet{% endif %}</h2>
+    <p class="max-w-xl text-sm text-base-content/60">
+      {% if has_any_spaces %}
+      There are no public spaces you can browse right now.
+      {% else %}
+      This is where spaces will appear once the first one is created.
+      {% endif %}
+      {% if user.is_authenticated and not has_any_spaces %}
+      Use the Create Space button above to start the first one.
+      {% endif %}
+    </p>
+    {% if not user.is_authenticated %}
+    <div class="card-actions mt-3">
+      <a href="{% url 'account_login' %}" class="btn btn-primary btn-sm">Sign in</a>
+      <a href="{% url 'account_signup' %}" class="btn btn-ghost btn-sm">Create account</a>
+    </div>
+    {% endif %}
+  </div>
 </div>
 {% endif %}
 {% endblock %}
