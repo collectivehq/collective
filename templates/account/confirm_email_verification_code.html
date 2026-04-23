@@ -1,0 +1,73 @@
+{% extends "account/_base_card.html" %}
+{% load i18n %}
+
+{% block title %}Email Verification — Collective{% endblock %}
+
+{% block card_title %}{% trans "Enter Verification Code" %}{% endblock %}
+
+{% block card_content %}
+      <p class="text-center text-sm text-base-content/70 mb-4">
+        {% blocktrans with email=email %}We sent a verification code to {{ email }}. Enter it below to complete your email confirmation.{% endblocktrans %}
+      </p>
+
+      <form method="post" action="{% url 'account_email_verification_sent' %}">
+        {% csrf_token %}
+        {% if verify_form.non_field_errors %}
+          <div class="toast static mb-3 w-full max-w-none items-stretch p-0 text-left">
+            <div role="alert" class="alert alert-error shadow-sm">
+              <div class="space-y-1">
+                {% for error in verify_form.non_field_errors %}
+                  <span class="block">{{ error }}</span>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+        {% endif %}
+        {% for field in verify_form %}
+          {% include "account/_form_field.html" %}
+        {% endfor %}
+        {{ redirect_field }}
+        <div class="mt-4 space-y-2">
+          <button type="submit" class="btn btn-primary w-full">{% trans "Confirm Email Address" %}</button>
+          {% if can_resend %}
+            <button type="submit" name="action" value="resend" class="btn btn-ghost w-full">{% trans "Request New Code" %}</button>
+          {% endif %}
+          {% if cancel_url %}
+            <a href="{{ cancel_url }}" class="btn btn-ghost w-full">{% trans "Cancel" %}</a>
+          {% else %}
+            <button type="submit" form="logout-from-stage" class="btn btn-ghost w-full">{% trans "Cancel" %}</button>
+          {% endif %}
+        </div>
+      </form>
+
+      {% if can_change %}
+        <div class="divider my-5">{% trans "Use a Different Email Address" %}</div>
+        <form method="post" action="{% url 'account_email_verification_sent' %}" class="text-left">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="change">
+          {% if change_form.non_field_errors %}
+            <div class="toast static mb-3 w-full max-w-none items-stretch p-0">
+              <div role="alert" class="alert alert-error shadow-sm">
+                <div class="space-y-1">
+                  {% for error in change_form.non_field_errors %}
+                    <span class="block">{{ error }}</span>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+          {% endif %}
+          {% for field in change_form %}
+            {% include "account/_form_field.html" %}
+          {% endfor %}
+          {{ redirect_field }}
+          <button type="submit" class="btn btn-outline w-full">{% trans "Send Code to New Address" %}</button>
+        </form>
+      {% endif %}
+
+      {% if not cancel_url %}
+        <form id="logout-from-stage" method="post" action="{% url 'account_logout' %}">
+          <input type="hidden" name="next" value="{% url 'account_login' %}">
+          {% csrf_token %}
+        </form>
+      {% endif %}
+{% endblock %}

@@ -42,6 +42,7 @@ export POSTGRES_PORT=5432
 
 You can also place them in a `.env` file in the repository root.
 Set `ACCOUNT_EMAIL_VERIFICATION=mandatory` if new accounts must confirm their email before they can use the site.
+Set `ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED=true` to use one-time verification codes instead of email confirmation links.
 
 ### Install dependencies
 
@@ -125,6 +126,7 @@ The repository includes a Dockerfile and entrypoint script for running the Djang
 
 When running behind a TLS-terminating proxy or load balancer, production trusts `X-Forwarded-Proto` and `X-Forwarded-Host` by default so Django can detect the original HTTPS request correctly. Set `USE_X_FORWARDED_PROTO=false` or `USE_X_FORWARDED_HOST=false` if your deployment does not provide those headers safely.
 Production also syncs the Django `Site` record on startup so account emails use the configured brand and domain. Override that metadata with `DJANGO_SITE_NAME` and `DJANGO_SITE_DOMAIN` if needed.
+Code-based email verification is available through `ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED=true`, which requires `ACCOUNT_EMAIL_VERIFICATION=mandatory`.
 
 ### SMTP
 

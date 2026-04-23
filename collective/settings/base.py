@@ -1,17 +1,13 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
 from django.core.exceptions import ImproperlyConfigured
 from django.utils.csp import CSP
-from dotenv import load_dotenv
 
+from .env import BASE_DIR, env_bool, env_int, env_non_empty_str, env_str
 from .storage import build_media_storage_config
 
-load_dotenv()
-
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
 MEDIA_STORAGE = build_media_storage_config(os.environ, BASE_DIR)
 
 INSTALLED_APPS = [
@@ -79,12 +75,12 @@ ASGI_APPLICATION = "collective.asgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.environ.get("POSTGRES_DB", "collective"),
-        "USER": os.environ.get("POSTGRES_USER", "collective"),
-        "PASSWORD": os.environ.get("POSTGRES_PASSWORD", "collective"),
-        "HOST": os.environ.get("POSTGRES_HOST", "172.21.0.3"),
-        "PORT": os.environ.get("POSTGRES_PORT", "5432"),
-        "CONN_MAX_AGE": int(os.environ.get("DJANGO_CONN_MAX_AGE", "60")),
+        "NAME": env_str("POSTGRES_DB", default="collective"),
+        "USER": env_str("POSTGRES_USER", default="collective"),
+        "PASSWORD": env_str("POSTGRES_PASSWORD", default="collective"),
+        "HOST": env_str("POSTGRES_HOST", default="172.21.0.3"),
+        "PORT": env_str("POSTGRES_PORT", default="5432"),
+        "CONN_MAX_AGE": env_int("DJANGO_CONN_MAX_AGE", default=60),
     }
 }
 
@@ -96,16 +92,36 @@ AUTHENTICATION_BACKENDS = [
 ]
 
 SITE_ID = 1
-SITE_NAME = os.environ.get("DJANGO_SITE_NAME", "Collective")
-SITE_DOMAIN = os.environ.get("DJANGO_SITE_DOMAIN", "localhost")
+SITE_NAME = env_non_empty_str("DJANGO_SITE_NAME", default="Collective")
+SITE_DOMAIN = env_non_empty_str("DJANGO_SITE_DOMAIN", default="localhost")
 
 ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*", "password2*"]
 ACCOUNT_LOGIN_METHODS = {"email"}
-ACCOUNT_EMAIL_VERIFICATION = os.environ.get("ACCOUNT_EMAIL_VERIFICATION", "optional").strip().lower()
+ACCOUNT_EMAIL_VERIFICATION = env_str("ACCOUNT_EMAIL_VERIFICATION", default="optional").lower()
 if ACCOUNT_EMAIL_VERIFICATION not in {"mandatory", "optional", "none"}:
+    raise ImproperlyConfigured("ACCOUNT_EMAIL_VERIFICATION must be one of: mandatory, optional, none.")
+ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED = env_bool("ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED", default=False)
+ACCOUNT_EMAIL_VERIFICATION_BY_CODE_MAX_ATTEMPTS = env_int(
+    "ACCOUNT_EMAIL_VERIFICATION_BY_CODE_MAX_ATTEMPTS",
+    default=3,
+)
+ACCOUNT_EMAIL_VERIFICATION_BY_CODE_TIMEOUT = env_int("ACCOUNT_EMAIL_VERIFICATION_BY_CODE_TIMEOUT", default=900)
+ACCOUNT_EMAIL_VERIFICATION_SUPPORTS_CHANGE = env_bool(
+    "ACCOUNT_EMAIL_VERIFICATION_SUPPORTS_CHANGE",
+    default=ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED,
+)
+ACCOUNT_EMAIL_VERIFICATION_SUPPORTS_RESEND = env_bool(
+    "ACCOUNT_EMAIL_VERIFICATION_SUPPORTS_RESEND",
+    default=ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED,
+)
+if ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED and ACCOUNT_EMAIL_VERIFICATION != "mandatory":
     raise ImproperlyConfigured(
-        "ACCOUNT_EMAIL_VERIFICATION must be one of: mandatory, optional, none."
+        "ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED requires ACCOUNT_EMAIL_VERIFICATION=mandatory."
     )
+if ACCOUNT_EMAIL_VERIFICATION_BY_CODE_MAX_ATTEMPTS <= 0:
+    raise ImproperlyConfigured("ACCOUNT_EMAIL_VERIFICATION_BY_CODE_MAX_ATTEMPTS must be greater than 0.")
+if ACCOUNT_EMAIL_VERIFICATION_BY_CODE_TIMEOUT <= 0:
+    raise ImproperlyConfigured("ACCOUNT_EMAIL_VERIFICATION_BY_CODE_TIMEOUT must be greater than 0.")
 ACCOUNT_CHANGE_EMAIL = True
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/"
@@ -145,7 +161,7 @@ CACHES = {
 
 TOGGLE_RATE_LIMIT_MAX_ATTEMPTS = 20
 TOGGLE_RATE_LIMIT_WINDOW_SECONDS = 60
-INVITE_DEFAULT_EXPIRY_DAYS = int(os.environ.get("INVITE_DEFAULT_EXPIRY_DAYS", "7"))
+INVITE_DEFAULT_EXPIRY_DAYS = env_int("INVITE_DEFAULT_EXPIRY_DAYS", default=7)
 
 if INVITE_DEFAULT_EXPIRY_DAYS <= 0:
     raise ImproperlyConfigured("INVITE_DEFAULT_EXPIRY_DAYS must be greater than 0.")
@@ -192,7 +208,7 @@ SECURE_CSP = {
 
 URLIZE_ASSUME_HTTPS = True
 
-_LOG_LEVEL = os.environ.get("DJANGO_LOG_LEVEL", "INFO").upper()
+_LOG_LEVEL = env_str("DJANGO_LOG_LEVEL", default="INFO").upper()
 
 LOGGING = {
     "version": 1,

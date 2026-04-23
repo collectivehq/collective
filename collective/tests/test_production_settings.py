@@ -21,6 +21,11 @@ def _load_production_settings(monkeypatch: pytest.MonkeyPatch, **env: str) -> Mo
         "DEFAULT_FROM_EMAIL",
         "SERVER_EMAIL",
         "ACCOUNT_EMAIL_VERIFICATION",
+        "ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED",
+        "ACCOUNT_EMAIL_VERIFICATION_BY_CODE_MAX_ATTEMPTS",
+        "ACCOUNT_EMAIL_VERIFICATION_BY_CODE_TIMEOUT",
+        "ACCOUNT_EMAIL_VERIFICATION_SUPPORTS_CHANGE",
+        "ACCOUNT_EMAIL_VERIFICATION_SUPPORTS_RESEND",
         "DJANGO_SITE_NAME",
         "DJANGO_SITE_DOMAIN",
         "USE_X_FORWARDED_HOST",
@@ -31,6 +36,12 @@ def _load_production_settings(monkeypatch: pytest.MonkeyPatch, **env: str) -> Mo
 
     monkeypatch.setenv("DJANGO_SECRET_KEY", "test-secret")
     monkeypatch.setenv("DJANGO_ALLOWED_HOSTS", "example.com")
+    monkeypatch.setenv("ACCOUNT_EMAIL_VERIFICATION", "optional")
+    monkeypatch.setenv("ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED", "false")
+    monkeypatch.setenv("ACCOUNT_EMAIL_VERIFICATION_BY_CODE_MAX_ATTEMPTS", "3")
+    monkeypatch.setenv("ACCOUNT_EMAIL_VERIFICATION_BY_CODE_TIMEOUT", "900")
+    monkeypatch.setenv("DJANGO_SITE_NAME", "Collective")
+    monkeypatch.setenv("DJANGO_SITE_DOMAIN", "")
 
     for key, value in env.items():
         monkeypatch.setenv(key, value)
@@ -115,6 +126,33 @@ class TestProductionEmailSettings:
             _load_production_settings(
                 monkeypatch,
                 ACCOUNT_EMAIL_VERIFICATION="sometimes",
+            )
+
+    def test_reads_email_verification_by_code_settings_from_environment(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        settings_module = _load_production_settings(
+            monkeypatch,
+            ACCOUNT_EMAIL_VERIFICATION="mandatory",
+            ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED="true",
+            ACCOUNT_EMAIL_VERIFICATION_BY_CODE_MAX_ATTEMPTS="5",
+            ACCOUNT_EMAIL_VERIFICATION_BY_CODE_TIMEOUT="600",
+        )
+
+        assert settings_module.ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED is True
+        assert settings_module.ACCOUNT_EMAIL_VERIFICATION_BY_CODE_MAX_ATTEMPTS == 5
+        assert settings_module.ACCOUNT_EMAIL_VERIFICATION_BY_CODE_TIMEOUT == 600
+        assert settings_module.ACCOUNT_EMAIL_VERIFICATION_SUPPORTS_CHANGE is True
+        assert settings_module.ACCOUNT_EMAIL_VERIFICATION_SUPPORTS_RESEND is True
+
+    def test_rejects_code_verification_without_mandatory_email_verification(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        with pytest.raises(
+            ImproperlyConfigured,
+            match="ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED requires ACCOUNT_EMAIL_VERIFICATION=mandatory",
+        ):
+            _load_production_settings(
+                monkeypatch,
+                ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED="true",
             )
 
 
