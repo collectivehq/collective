@@ -122,6 +122,25 @@ If you rebuild `static/app.css`, run `python manage.py collectstatic --noinput` 
 
 The repository includes a Dockerfile and entrypoint script for running the Django app in a container. The image expects PostgreSQL connection settings and serves the application with Gunicorn.
 
+### SMTP
+
+Production uses Django's SMTP backend. Configure delivery with environment variables like these:
+
+```bash
+export EMAIL_HOST=smtp.example.com
+export EMAIL_PORT=587
+export EMAIL_HOST_USER=smtp-user
+export EMAIL_HOST_PASSWORD=smtp-password
+export EMAIL_USE_TLS=true
+export DEFAULT_FROM_EMAIL="Collective <no-reply@example.com>"
+```
+
+Optional overrides:
+
+- `EMAIL_USE_SSL` if your provider expects implicit TLS instead of STARTTLS
+- `EMAIL_TIMEOUT` to change the SMTP socket timeout in seconds
+- `SERVER_EMAIL` to override the sender used for server-generated error emails
+
 ### Object Storage Media
 
 Image uploads can be stored in any S3-compatible object store, including Garage. Enable that backend with environment variables like these:
