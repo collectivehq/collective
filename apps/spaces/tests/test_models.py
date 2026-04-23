@@ -4,9 +4,9 @@ import pytest
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, models
 
-from apps.core.models import BaseModel, CRUDModel
+from apps.core.models import CRUDModel
 from apps.spaces.constants import PERMISSION_LABELS
-from apps.spaces.models import Role, Space, SpaceInvite, SpaceParticipant
+from apps.spaces.models import Role, Space, SpaceParticipant
 from apps.spaces.tests.factories import RoleFactory, SpaceFactory, SpaceParticipantFactory
 from apps.users.tests.factories import UserFactory
 
@@ -125,17 +125,3 @@ class TestSpaceParticipant:
 
         with pytest.raises(ValidationError, match="Role must belong to the participant's space"):
             participant.full_clean()
-
-
-@pytest.mark.django_db
-class TestSpaceInvite:
-    def test_inherits_base_model(self):
-        assert issubclass(SpaceInvite, BaseModel)
-
-    def test_role_must_belong_to_same_space(self):
-        space = SpaceFactory()
-        other_role = RoleFactory()
-        invite = SpaceInvite(space=space, role=other_role, created_by=space.created_by)
-
-        with pytest.raises(ValidationError, match="Role must belong to the invite's space"):
-            invite.full_clean()

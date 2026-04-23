@@ -63,9 +63,10 @@
       <div class="grid grid-cols-2 gap-2">
         <div class="space-y-1">
           <label class="label py-1" for="{{ field.id_for_label }}"><span class="text-sm">{{ field.label }}</span></label>
-          <div class="flex items-center gap-1">
+          <div class="flex items-center gap-1" x-data>
             {{ field }}
-            <button type="button" onclick="var inp = this.previousElementSibling; inp.value = '';"
+            <button type="button"
+                    @click="$el.previousElementSibling.value = ''"
                     class="btn btn-ghost btn-xs btn-square tooltip" data-tip="Clear">
               <i data-lucide="x" class="w-3.5 h-3.5"></i>
             </button>
@@ -74,9 +75,10 @@
       {% elif field.name == "ends_at" %}
         <div class="space-y-1">
           <label class="label py-1" for="{{ field.id_for_label }}"><span class="text-sm">{{ field.label }}</span></label>
-          <div class="flex items-center gap-1">
+          <div class="flex items-center gap-1" x-data>
             {{ field }}
-            <button type="button" onclick="var inp = this.previousElementSibling; inp.value = '';"
+            <button type="button"
+                    @click="$el.previousElementSibling.value = ''"
                     class="btn btn-ghost btn-xs btn-square tooltip" data-tip="Clear">
               <i data-lucide="x" class="w-3.5 h-3.5"></i>
             </button>
@@ -106,7 +108,62 @@
       </div>
       {% endif %}
     {% endfor %}
-    <button type="submit" class="btn btn-primary btn-sm w-full">Save Settings</button>
+    <button type="submit" class="btn btn-primary btn-sm">Save Settings</button>
   </form>
+
+  <div class="mt-8 rounded-box border border-error/30 bg-error/5 p-4"
+       x-data="{
+         confirmation: '',
+         openDeleteDialog() { this.$refs.deleteDialog.showModal(); },
+         closeDeleteDialog() { this.$refs.deleteDialog.close(); }
+       }">
+    <div class="space-y-2">
+      <h2 class="text-sm font-semibold text-error">Danger zone</h2>
+      <p class="text-sm text-base-content/70">
+        Deleting this space permanently removes it and all of its content from the application database. This action is irreversible.
+      </p>
+      <button type="button"
+              class="btn btn-error btn-sm"
+              @click="openDeleteDialog()">
+        Delete space
+      </button>
+    </div>
+
+    <dialog id="delete-space-dialog" class="modal" x-ref="deleteDialog" @close="confirmation = ''">
+      <div class="modal-box max-w-md">
+        <form method="dialog">
+          <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2" aria-label="Close">✕</button>
+        </form>
+        <div class="space-y-4">
+          <div class="space-y-2">
+            <h3 class="text-lg font-semibold">Delete space?</h3>
+            <p class="text-sm text-base-content/70">
+              This will permanently delete <span class="font-medium">{{ space.title }}</span>, including its discussions, posts, invitations, and participant data. This cannot be undone.
+            </p>
+            <p class="text-sm text-base-content/70">
+              Type <span class="font-medium">{{ space.title }}</span> to confirm.
+            </p>
+          </div>
+          <label class="form-control w-full">
+            <input x-model="confirmation" type="text" class="input input-bordered w-full" placeholder="{{ space.title }}">
+          </label>
+          <div class="modal-action">
+            <button type="button" class="btn btn-ghost btn-sm" @click="closeDeleteDialog()">Cancel</button>
+            <form method="post" action="{% url 'spaces:delete' space_id=space.pk %}">
+              {% csrf_token %}
+              <button type="submit"
+                      class="btn btn-error btn-sm"
+                      :disabled="confirmation !== '{{ space.title|escapejs }}'">
+                Permanently delete space
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop">
+        <button>close</button>
+      </form>
+    </dialog>
+  </div>
 </div>
 {% endblock %}

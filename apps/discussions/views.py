@@ -138,35 +138,82 @@ def _get_visible_active_child_counts(
     return counts
 
 
-def _get_author_role_map(space: Space, children: list[InlineChild]) -> dict[uuid_mod.UUID, str]:
-    """Build a mapping of author user_id to role label for post author badges."""
+def _get_author_role_maps(
+    space: Space,
+    children: list[InlineChild],
+) -> tuple[dict[uuid_mod.UUID, str], dict[uuid_mod.UUID, str]]:
     post_author_ids = {
         post.author_id for post in (cast(Post, child) for child in children if child.is_post) if post.author_id
     }
     if not post_author_ids:
-        return {}
+        return {}, {}
     participants = SpaceParticipant.objects.filter(space=space, user_id__in=post_author_ids).select_related("role")
-    return {participant.user_id: participant.role.label for participant in participants}
-
-
-def _get_author_role_highlight_map(space: Space, children: list[InlineChild]) -> dict[uuid_mod.UUID, str]:
-    post_author_ids = {
-        post.author_id for post in (cast(Post, child) for child in children if child.is_post) if post.author_id
-    }
-    if not post_author_ids:
-        return {}
-    participants = SpaceParticipant.objects.filter(space=space, user_id__in=post_author_ids).select_related("role")
-    return {
-        participant.user_id: participant.role.post_highlight_color
-        for participant in participants
-        if participant.role.post_highlight_color
-    }
+    role_map: dict[uuid_mod.UUID, str] = {}
+    role_highlight_map: dict[uuid_mod.UUID, str] = {}
+    for participant in participants:
+        role_map[participant.user_id] = participant.role.label
+        if participant.role.post_highlight_color:
+            role_highlight_map[participant.user_id] = participant.role.post_highlight_color
+    return role_map, role_highlight_map
 
 
 @dataclass(slots=True)
 class ReactionDisplayData:
     user_reaction_type: str
     reaction_counts: dict[str, int]
+
+
+@dataclass(frozen=True, slots=True)
+class DiscussionDetailAccess:
+    can_post: bool
+    can_create_draft: bool
+    can_upload_images: bool
+    can_resolve: bool
+    can_reopen: bool
+    can_create_discussion: bool
+    can_rename_discussion: bool
+    can_delete_discussion: bool
+    can_reorganise: bool
+    can_view_history: bool
+    can_opine: bool
+    can_toggle_subscription: bool
+    can_moderate_links: bool
+    is_subscribed: bool
+
+    @property
+    def can_submit_post_form(self) -> bool:
+        return self.can_post or self.can_create_draft
+
+    @property
+    def has_discussion_menu_actions(self) -> bool:
+        return self.can_rename_discussion or self.can_delete_discussion or self.can_toggle_subscription
+
+
+def _build_discussion_detail_access(
+    *,
+    user: User,
+    space: Space,
+    discussion: Discussion,
+    participant: SpaceParticipant | None,
+) -> DiscussionDetailAccess:
+    can_toggle = can_toggle_subscription(user, discussion, participant=participant)
+    can_delete = can_delete_discussion(user, space, participant=participant) and not discussion.is_root()
+    return DiscussionDetailAccess(
+        can_post=can_post_to_discussion(user, discussion, participant=participant),
+        can_create_draft=can_create_draft(user, space, participant=participant),
+        can_upload_images=can_upload_images(user, space, participant=participant),
+        can_resolve=can_resolve_discussion(user, discussion, participant=participant),
+        can_reopen=can_reopen_discussion(user, discussion, participant=participant),
+        can_create_discussion=can_create_discussion(user, space, participant=participant),
+        can_rename_discussion=can_rename_discussion(user, space, participant=participant),
+        can_delete_discussion=can_delete,
+        can_reorganise=can_reorganise(user, space, participant=participant),
+        can_view_history=can_view_history(user, space, participant=participant),
+        can_opine=can_opine(user, discussion, participant=participant),
+        can_toggle_subscription=can_toggle,
+        can_moderate_links=can_moderate_content(user, space, participant=participant),
+        is_subscribed=is_subscribed(user=user, discussion=discussion) if can_toggle else False,
+    )
 
 
 def _get_user_reactions(
@@ -192,6 +239,105 @@ def _post_is_edited(post: Post) -> bool:
     if prefetched is not None:
         return len(prefetched) > 1
     return post.revisions.count() > 1
+
+
+def _visible_inline_children(
+    all_children: list[Post | Link | Discussion],
+    *,
+    user: User,
+    participant: SpaceParticipant | None,
+) -> list[InlineChild]:
+    inline_children = [cast(InlineChild, child) for child in all_children if child.is_post or child.is_link]
+    return [
+        child
+        for child in inline_children
+        if not child.is_post or can_view_post(user, cast(Post, child), participant=participant)
+    ]
+
+
+def _build_sub_discussions(
+    all_children: list[Post | Link | Discussion],
+    *,
+    user: User,
+    space: Space,
+    participant: SpaceParticipant | None,
+) -> list[DiscussionDetailSubDiscussion]:
+    link_target_ids = {cast(Link, child).target_id for child in all_children if child.is_link}
+    raw_sub_discussions = [
+        cast(Discussion, child) for child in all_children if child.is_discussion and child.pk not in link_target_ids
+    ]
+    active_child_counts = _get_visible_active_child_counts(
+        raw_sub_discussions,
+        user=user,
+        space=space,
+        participant=participant,
+    )
+    return [
+        DiscussionDetailSubDiscussion(
+            discussion=sub_discussion,
+            active_child_count=active_child_counts.get(sub_discussion.pk, 0),
+        )
+        for sub_discussion in raw_sub_discussions
+    ]
+
+
+def _build_inline_child_cards(
+    *,
+    inline_children: list[InlineChild],
+    space: Space,
+    user: User,
+    participant: SpaceParticipant | None,
+    access: DiscussionDetailAccess,
+    role_highlight_map: dict[uuid_mod.UUID, str],
+    reaction_data: dict[uuid_mod.UUID, ReactionDisplayData],
+) -> list[DiscussionDetailInlineChild]:
+    link_previews = _get_visible_link_previews(
+        inline_children,
+        user=user,
+        space=space,
+        participant=participant,
+    )
+    cards: list[DiscussionDetailInlineChild] = []
+    for child in inline_children:
+        if child.is_post:
+            post = cast(Post, child)
+            post_reactions = reaction_data.get(
+                post.pk,
+                ReactionDisplayData(user_reaction_type="", reaction_counts={}),
+            )
+            user_can_edit = can_edit_post(user, post, space, participant=participant)
+            user_can_delete = can_delete_post(user, post, space, participant=participant)
+            post_show_history = access.can_view_history and not post.is_draft and _post_is_edited(post)
+            cards.append(
+                DiscussionDetailPost(
+                    post=post,
+                    author_role_highlight_color=role_highlight_map.get(post.author_id, ""),
+                    user_can_edit=user_can_edit,
+                    can_publish_draft=post.is_draft and user_can_edit and access.can_post,
+                    user_can_react=can_react(user, post, participant=participant),
+                    user_reaction_type=post_reactions.user_reaction_type,
+                    reaction_counts=post_reactions.reaction_counts,
+                    can_delete=user_can_delete,
+                    can_move=access.can_reorganise,
+                    can_promote=can_promote_post(user, space, participant=participant),
+                    can_view_history=access.can_view_history,
+                    show_history=post_show_history,
+                    show_actions=user_can_edit or user_can_delete or access.can_reorganise or post_show_history,
+                )
+            )
+            continue
+
+        link = cast(Link, child)
+        cards.append(
+            DiscussionDetailLink(
+                link=link,
+                link_preview_post=link_previews.get(link.target_id),
+                can_delete=access.can_moderate_links,
+                can_move=access.can_reorganise,
+                show_actions=access.can_moderate_links or access.can_reorganise,
+            )
+        )
+    return cards
 
 
 class TreeNodeEntry(TypedDict):
@@ -269,32 +415,9 @@ def discussion_detail(request: HttpRequest, space_id: str, discussion_id: str) -
         raise PermissionDenied
 
     all_children = discussion_services.get_discussion_children(discussion)
-    inline_children = [cast(InlineChild, child) for child in all_children if child.is_post or child.is_link]
-    inline_children = [
-        child
-        for child in inline_children
-        if not child.is_post or can_view_post(user, cast(Post, child), participant=participant)
-    ]
-    link_target_ids = {cast(Link, child).target_id for child in all_children if child.is_link}
-    raw_sub_discussions = [
-        cast(Discussion, child) for child in all_children if child.is_discussion and child.pk not in link_target_ids
-    ]
-    active_child_counts = _get_visible_active_child_counts(
-        raw_sub_discussions,
-        user=user,
-        space=space,
-        participant=participant,
-    )
-    sub_discussions = [
-        DiscussionDetailSubDiscussion(
-            discussion=sub_discussion,
-            active_child_count=active_child_counts.get(sub_discussion.pk, 0),
-        )
-        for sub_discussion in raw_sub_discussions
-    ]
-
-    link_previews = _get_visible_link_previews(
-        inline_children,
+    inline_children = _visible_inline_children(all_children, user=user, participant=participant)
+    sub_discussions = _build_sub_discussions(
+        all_children,
         user=user,
         space=space,
         participant=participant,
@@ -303,81 +426,20 @@ def discussion_detail(request: HttpRequest, space_id: str, discussion_id: str) -
     opinions = get_opinion_counts(discussion)
     user_opinion = get_user_opinion_type(user=user, discussion=discussion) if participant is not None else None
 
-    user_can_post = can_post_to_discussion(user, discussion, participant=participant)
-    user_can_create_draft = can_create_draft(user, space, participant=participant)
-    user_can_upload_images = can_upload_images(user, space, participant=participant)
-    user_can_submit_post_form = user_can_post or user_can_create_draft
-    user_can_resolve = can_resolve_discussion(user, discussion, participant=participant)
-    user_can_reopen = can_reopen_discussion(user, discussion, participant=participant)
-    user_can_create_discussion = can_create_discussion(user, space, participant=participant)
-    user_can_rename_discussion = can_rename_discussion(user, space, participant=participant)
-    user_can_delete_discussion = can_delete_discussion(user, space, participant=participant)
-    user_can_reorganise = can_reorganise(user, space, participant=participant)
-    user_can_view_history = can_view_history(user, space, participant=participant)
-    user_can_opine = can_opine(user, discussion, participant=participant)
-    user_can_toggle_subscription = can_toggle_subscription(user, discussion, participant=participant)
-    user_is_subscribed = is_subscribed(user=user, discussion=discussion) if user_can_toggle_subscription else False
-    user_has_discussion_menu_actions = (
-        user_can_rename_discussion
-        or (user_can_delete_discussion and not discussion.is_root())
-        or user_can_toggle_subscription
-    )
+    access = _build_discussion_detail_access(user=user, space=space, discussion=discussion, participant=participant)
+    all_discussions = discussion_services.get_all_discussions_with_levels(space) if access.can_reorganise else []
 
-    all_discussions = discussion_services.get_all_discussions_with_levels(space) if user_can_reorganise else []
-
-    role_map = _get_author_role_map(space, inline_children)
-    role_highlight_map = _get_author_role_highlight_map(space, inline_children)
+    role_map, role_highlight_map = _get_author_role_maps(space, inline_children)
     reaction_data = _get_user_reactions(inline_children, user if participant is not None else None)
-    inline_child_cards: list[DiscussionDetailInlineChild] = []
-    for child in inline_children:
-        if child.is_post:
-            post = cast(Post, child)
-            post_reactions = reaction_data.get(
-                post.pk,
-                ReactionDisplayData(user_reaction_type="", reaction_counts={}),
-            )
-            user_can_edit = can_edit_post(user, post, space, participant=participant)
-            user_can_delete = can_delete_post(user, post, space, participant=participant)
-            post_can_promote = can_promote_post(user, space, participant=participant)
-            post_can_publish_draft = (
-                post.is_draft
-                and user_can_edit
-                and can_post_to_discussion(
-                    user,
-                    discussion,
-                    participant=participant,
-                )
-            )
-            post_show_history = user_can_view_history and not post.is_draft and _post_is_edited(post)
-            inline_child_cards.append(
-                DiscussionDetailPost(
-                    post=post,
-                    author_role_highlight_color=role_highlight_map.get(post.author_id, ""),
-                    user_can_edit=user_can_edit,
-                    can_publish_draft=post_can_publish_draft,
-                    user_can_react=can_react(user, post, participant=participant),
-                    user_reaction_type=post_reactions.user_reaction_type,
-                    reaction_counts=post_reactions.reaction_counts,
-                    can_delete=user_can_delete,
-                    can_move=user_can_reorganise,
-                    can_promote=post_can_promote,
-                    can_view_history=user_can_view_history,
-                    show_history=post_show_history,
-                    show_actions=user_can_edit or user_can_delete or user_can_reorganise or post_show_history,
-                )
-            )
-            continue
-
-        link = cast(Link, child)
-        inline_child_cards.append(
-            DiscussionDetailLink(
-                link=link,
-                link_preview_post=link_previews.get(link.target_id),
-                can_delete=can_moderate_content(user, space, participant=participant),
-                can_move=user_can_reorganise,
-                show_actions=can_moderate_content(user, space, participant=participant) or user_can_reorganise,
-            )
-        )
+    inline_child_cards = _build_inline_child_cards(
+        inline_children=inline_children,
+        space=space,
+        user=user,
+        participant=participant,
+        access=access,
+        role_highlight_map=role_highlight_map,
+        reaction_data=reaction_data,
+    )
 
     return render(
         request,
@@ -391,20 +453,20 @@ def discussion_detail(request: HttpRequest, space_id: str, discussion_id: str) -
             "resolution": discussion.resolution_type,
             "opinions": opinions,
             "user_opinion": user_opinion,
-            "can_post": user_can_post,
-            "can_create_draft": user_can_create_draft,
-            "can_upload_images": user_can_upload_images,
-            "can_submit_post_form": user_can_submit_post_form,
-            "can_resolve": user_can_resolve,
-            "can_reopen": user_can_reopen,
-            "can_opine": user_can_opine,
-            "can_toggle_subscription": user_can_toggle_subscription,
-            "has_discussion_menu_actions": user_has_discussion_menu_actions,
-            "can_create_discussion": user_can_create_discussion,
-            "can_rename_discussion": user_can_rename_discussion,
-            "can_delete_discussion": user_can_delete_discussion,
-            "can_reorganise": user_can_reorganise,
-            "is_subscribed": user_is_subscribed,
+            "can_post": access.can_post,
+            "can_create_draft": access.can_create_draft,
+            "can_upload_images": access.can_upload_images,
+            "can_submit_post_form": access.can_submit_post_form,
+            "can_resolve": access.can_resolve,
+            "can_reopen": access.can_reopen,
+            "can_opine": access.can_opine,
+            "can_toggle_subscription": access.can_toggle_subscription,
+            "has_discussion_menu_actions": access.has_discussion_menu_actions,
+            "can_create_discussion": access.can_create_discussion,
+            "can_rename_discussion": access.can_rename_discussion,
+            "can_delete_discussion": access.can_delete_discussion,
+            "can_reorganise": access.can_reorganise,
+            "is_subscribed": access.is_subscribed,
             "all_discussions": all_discussions,
             "role_map": role_map,
         },

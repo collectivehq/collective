@@ -12,6 +12,7 @@ urlpatterns: list[URLPattern | URLResolver] = [
     path("accounts/", include("allauth.urls")),
     path("accounts/", include("apps.users.urls")),
     path("spaces/", include("apps.spaces.urls")),
+    path("spaces/", include("apps.invitations.urls")),
     path("spaces/", include("apps.discussions.urls")),
     path("spaces/", include("apps.posts.urls")),
     path("spaces/", include("apps.opinions.urls")),
@@ -19,7 +20,7 @@ urlpatterns: list[URLPattern | URLResolver] = [
     path("spaces/", include("apps.subscriptions.urls")),
 ]
 
-if settings.DEBUG:
+if settings.DEBUG and not settings.USE_OBJECT_STORAGE:
     from django.conf.urls.static import static
 
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

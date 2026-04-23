@@ -162,6 +162,26 @@ class TestDiscussionDetailView:
             in response.content
         )
 
+    def test_reorganiser_visible_batch_move_controls_are_rendered(self, client, open_space_with_users) -> None:
+        space, creator, _, _ = open_space_with_users
+        discussion = space.root_discussion
+        post = post_services.create_post(discussion=discussion, author=creator, content="Batch movable")
+        client.force_login(creator)
+
+        response = client.get(
+            reverse(
+                "discussions:discussion_detail",
+                kwargs={"space_id": space.pk, "discussion_id": discussion.pk},
+            )
+        )
+
+        assert response.status_code == 200
+        assert b"Select items" in response.content
+        assert b'data-lucide="check-square"' in response.content
+        assert b'x-show="selectingItems && selectedItems.length > 0"' in response.content
+        assert reverse("posts:discussion_items_move", kwargs={"space_id": space.pk}).encode() in response.content
+        assert str(post.pk).encode() in response.content
+
     def test_closed_space_tree_shows_add_discussion_controls_for_facilitator(
         self,
         client,
@@ -212,7 +232,7 @@ class TestDiscussionDetailView:
         assert b"Resolve" not in response.content
         assert b"Edit title" not in response.content
         assert b"Reopen discussion" not in response.content
-        assert b"Reorder children" not in response.content
+        assert b"Reorder items" not in response.content
         assert b"Subscribe" not in response.content
         assert b"ellipsis-vertical" not in response.content
 
@@ -234,6 +254,67 @@ class TestDiscussionDetailView:
 
         assert response.status_code == 200
         assert reverse("posts:image_upload", kwargs={"space_id": space.pk}).encode() not in response.content
+
+    def test_delete_action_uses_standard_delete_warning(self, client, open_space_with_users) -> None:
+        space, creator, _, _ = open_space_with_users
+        discussion = DiscussionFactory(space=space)
+        client.force_login(creator)
+
+        response = client.get(
+            reverse(
+                "discussions:discussion_detail",
+                kwargs={"space_id": space.pk, "discussion_id": discussion.pk},
+            )
+        )
+
+        assert response.status_code == 200
+        assert b"> Delete" in response.content
+        assert b"This is irreversible." not in response.content
+
+
+@pytest.mark.django_db
+class TestDiscussionDeleteView:
+    def test_delete_discussion_soft_deletes_subtree_and_content(self, client, open_space_with_users) -> None:
+        space, creator, _, _ = open_space_with_users
+        parent = DiscussionFactory(space=space, parent=space.root_discussion, label="Parent")
+        child = DiscussionFactory(space=space, parent=parent, label="Child")
+        post = post_services.create_post(discussion=parent, author=creator, content="Parent post")
+        link = Link.objects.create(discussion=parent, created_by=creator, target=child, sequence_index=1)
+        client.force_login(creator)
+
+        response = client.post(
+            reverse(
+                "discussions:discussion_delete",
+                kwargs={"space_id": space.pk, "discussion_id": parent.pk},
+            ),
+            HTTP_HX_REQUEST="true",
+        )
+
+        assert response.status_code == 200
+        parent.refresh_from_db()
+        child.refresh_from_db()
+        post.refresh_from_db()
+        link.refresh_from_db()
+        assert parent.deleted_at is not None
+        assert child.deleted_at is not None
+        assert post.deleted_at is not None
+        assert link.deleted_at is not None
+
+    def test_delete_discussion_selects_parent_after_delete(self, client, open_space_with_users) -> None:
+        space, creator, _, _ = open_space_with_users
+        discussion = DiscussionFactory(space=space, parent=space.root_discussion, label="Temporary")
+        client.force_login(creator)
+
+        response = client.post(
+            reverse(
+                "discussions:discussion_delete",
+                kwargs={"space_id": space.pk, "discussion_id": discussion.pk},
+            ),
+            HTTP_HX_REQUEST="true",
+        )
+
+        assert response.status_code == 200
+        assert str(space.root_discussion.pk).encode() in response["HX-Trigger"].encode()
 
 
 @pytest.mark.django_db
@@ -265,7 +346,7 @@ class TestSpaceDetailViewStateActions:
         response = client.get(reverse("spaces:detail", kwargs={"space_id": space.pk}))
 
         assert response.status_code == 200
-        assert b"Rearrange tree" not in response.content
+        assert b"Rearrange discussions" not in response.content
 
 
 @pytest.mark.django_db
@@ -293,9 +374,102 @@ class TestDiscussionMovePositionsView:
         client.force_login(participant)
 
         response = client.get(
-            reverse("posts:discussion_item_move_positions", kwargs={"space_id": space.pk, "item_id": movable_post.pk}),
-            {"discussion_id": target_discussion.pk},
+            reverse("posts:discussion_items_move_positions", kwargs={"space_id": space.pk}),
+            {"discussion_id": target_discussion.pk, "item_ids": [movable_post.pk]},
         )
 
         assert response.status_code == 200
         assert b"Top secret draft" not in response.content
+
+    def test_batch_move_positions_excludes_hidden_drafts(self, client, open_space_with_users) -> None:
+        space, creator, participant, _ = open_space_with_users
+        sorter_role = space_services.create_role(space=space, label="Sorter", created_by=creator)
+        sorter_role = space_services.update_role(role=sorter_role, permissions={"can_reorganise": True})
+        participant_record = space.participants.get(user=participant)
+        space_services.update_participant_role(participant=participant_record, role=sorter_role)
+
+        current_discussion = space.root_discussion
+        target_discussion = DiscussionFactory(space=space, parent=current_discussion)
+        first = post_services.create_post(discussion=current_discussion, author=participant, content="First")
+        second = post_services.create_post(discussion=current_discussion, author=participant, content="Second")
+        post_services.create_post(
+            discussion=target_discussion,
+            author=creator,
+            content="Top secret draft",
+            is_draft=True,
+        )
+        client.force_login(participant)
+
+        response = client.get(
+            reverse("posts:discussion_items_move_positions", kwargs={"space_id": space.pk}),
+            {"discussion_id": target_discussion.pk, "item_ids": [first.pk, second.pk]},
+        )
+
+        assert response.status_code == 200
+        assert b"Top secret draft" not in response.content
+        assert b"First" in response.content
+        assert b"Second" in response.content
+        assert b"2 selected items" not in response.content
+
+
+@pytest.mark.django_db
+class TestDiscussionItemMoveView:
+    def test_reorganiser_can_move_single_item(self, client, open_space_with_users) -> None:
+        space, creator, _, _ = open_space_with_users
+        source = space.root_discussion
+        target = DiscussionFactory(space=space, parent=source)
+        post = post_services.create_post(discussion=source, author=creator, content="Movable")
+        existing = post_services.create_post(discussion=target, author=creator, content="Existing")
+        client.force_login(creator)
+
+        response = client.post(
+            reverse("posts:discussion_item_move", kwargs={"space_id": space.pk, "item_id": post.pk}),
+            {
+                "target_discussion_id": target.pk,
+                "position": 1,
+                "ordered_target_ids": [existing.pk, post.pk],
+            },
+            HTTP_HX_REQUEST="true",
+        )
+
+        assert response.status_code == 200
+        post.refresh_from_db()
+        assert post.discussion_id == target.pk
+        assert [moved_post.pk for moved_post in target.posts.order_by("sequence_index")] == [existing.pk, post.pk]
+        assert str(target.pk).encode() in response["HX-Trigger"].encode()
+
+
+@pytest.mark.django_db
+class TestDiscussionBatchMoveView:
+    def test_reorganiser_can_move_selected_items(self, client, open_space_with_users) -> None:
+        space, creator, _, _ = open_space_with_users
+        source = space.root_discussion
+        target = DiscussionFactory(space=space, parent=source)
+        first = post_services.create_post(discussion=source, author=creator, content="First")
+        second = post_services.create_post(discussion=source, author=creator, content="Second")
+        existing = post_services.create_post(discussion=target, author=creator, content="Existing")
+        trailing = post_services.create_post(discussion=target, author=creator, content="Trailing")
+        client.force_login(creator)
+
+        response = client.post(
+            reverse("posts:discussion_items_move", kwargs={"space_id": space.pk}),
+            {
+                "item_ids": [second.pk, first.pk],
+                "target_discussion_id": target.pk,
+                "position": 1,
+                "ordered_target_ids": [existing.pk, second.pk, trailing.pk, first.pk],
+            },
+            HTTP_HX_REQUEST="true",
+        )
+
+        assert response.status_code == 200
+        first.refresh_from_db()
+        second.refresh_from_db()
+        assert first.discussion_id == target.pk
+        assert second.discussion_id == target.pk
+        assert [post.pk for post in target.posts.order_by("sequence_index")] == [
+            existing.pk,
+            second.pk,
+            trailing.pk,
+            first.pk,
+        ]

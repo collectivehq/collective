@@ -66,33 +66,6 @@ class Migration(migrations.Migration):
             ),
         ),
         migrations.AddField(
-            model_name="spaceinvite",
-            name="created_by",
-            field=models.ForeignKey(
-                on_delete=django.db.models.deletion.PROTECT,
-                related_name="%(app_label)s_%(class)s_created",
-                to=settings.AUTH_USER_MODEL,
-            ),
-        ),
-        migrations.AddField(
-            model_name="spaceinvite",
-            name="role",
-            field=models.ForeignKey(
-                on_delete=django.db.models.deletion.CASCADE,
-                related_name="invites",
-                to="spaces.role",
-            ),
-        ),
-        migrations.AddField(
-            model_name="spaceinvite",
-            name="space",
-            field=models.ForeignKey(
-                on_delete=django.db.models.deletion.CASCADE,
-                related_name="invites",
-                to="spaces.space",
-            ),
-        ),
-        migrations.AddField(
             model_name="spaceparticipant",
             name="created_by",
             field=models.ForeignKey(

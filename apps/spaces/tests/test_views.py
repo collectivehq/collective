@@ -2,15 +2,19 @@ from __future__ import annotations
 
 import pytest
 from django.contrib.messages import get_messages
+from django.core import mail
 from django.test import Client
 from django.test.utils import override_settings
 from django.urls import reverse
 from django.utils import timezone
 
+from apps.discussions import services as discussion_services
+from apps.invitations.models import SpaceInvite
+from apps.invitations.services import accept_invite
 from apps.posts import services as post_services
 from apps.spaces import services as space_services
 from apps.spaces.constants import PERMISSION_LABELS
-from apps.spaces.models import Role, Space, SpaceInvite, SpaceParticipant
+from apps.spaces.models import Role, Space, SpaceParticipant
 from apps.users.tests.factories import UserFactory
 
 
@@ -25,10 +29,54 @@ class TestSpaceListView:
         response = c.get(reverse("spaces:list"))
         assert response.status_code == 200
 
+    def test_shows_total_visible_spaces_badge(self):
+        creator = UserFactory()
+        joined_space = space_services.create_space(title="Joined", created_by=creator)
+        public_space = space_services.create_space(title="Public", created_by=UserFactory())
+        space_services.open_space(space=joined_space)
+        space_services.open_space(space=public_space)
+        c = Client()
+        c.force_login(creator)
+
+        response = c.get(reverse("spaces:list"))
+
+        assert response.status_code == 200
+        assert b"Your Spaces" in response.content
+        assert b"Public Spaces" in response.content
+        assert response.content.count(b'<span class="badge badge-neutral badge-sm">1</span>') >= 2
+
     def test_shows_participating_spaces(self, open_space_with_client):
         c, creator, space = open_space_with_client
         response = c.get(reverse("spaces:list"))
         assert space.title.encode() in response.content
+
+    def test_shows_targeted_invites_in_invited_spaces(self):
+        creator = UserFactory()
+        invitee = UserFactory(email="invitee@example.com")
+        invited_space = space_services.create_space(title="Invite Only", created_by=creator, is_public=False)
+        public_space = space_services.create_space(title="Public Space", created_by=creator)
+        space_services.open_space(space=invited_space)
+        space_services.open_space(space=public_space)
+        invite = SpaceInvite.objects.create(
+            space=invited_space,
+            role=invited_space.default_role,
+            created_by=creator,
+            email=invitee.email,
+        )
+        c = Client()
+        c.force_login(invitee)
+
+        response = c.get(reverse("spaces:list"))
+
+        assert response.status_code == 200
+        assert b"Invited Spaces" in response.content
+        assert invited_space.title.encode() in response.content
+        assert (
+            reverse("invitations:invite_accept", kwargs={"space_id": invited_space.pk, "invite_id": invite.pk}).encode()
+            in response.content
+        )
+        assert b"Review invite" not in response.content
+        assert b"Decline" not in response.content
 
     def test_orders_spaces_by_updated_at(self):
         creator = UserFactory()
@@ -226,6 +274,26 @@ class TestSpaceDetailView:
         assert response.status_code == 200
         assert b"About this space" in response.content
 
+    def test_about_modal_shows_info_and_recent_activity_tabs(self, open_space_with_client):
+        c, creator, space = open_space_with_client
+        discussion_services.create_child_discussion(
+            parent=space.root_discussion,
+            space=space,
+            label="Decision log",
+            created_by=creator,
+        )
+        post_services.create_post(discussion=space.root_discussion, author=creator, content="Recent activity item")
+
+        response = c.get(reverse("spaces:detail", kwargs={"space_id": space.pk}))
+
+        assert response.status_code == 200
+        assert b"tabs tabs-lift tabs-sm" in response.content
+        assert b"Recent activities" in response.content
+        assert b"Recent activity item" in response.content
+        assert b"Decision log" in response.content
+        assert b'hx-target="#conversation-panel"' in response.content
+        assert b"max-w-3xl" in response.content
+
     def test_sidebar_title_selects_root_discussion(self, open_space_with_client):
         c, _, space = open_space_with_client
 
@@ -385,6 +453,27 @@ class TestSpaceJoinView:
         assert response.status_code == 404
         assert not Space.objects.get(pk=space.pk).participants.filter(user=joiner).exists()
 
+    def test_private_space_join_redirects_targeted_invitee(self):
+        creator = UserFactory()
+        invitee = UserFactory(email="invitee@example.com")
+        space = space_services.create_space(title="Private", created_by=creator, is_public=False)
+        space_services.open_space(space=space)
+        invite = SpaceInvite.objects.create(
+            space=space,
+            role=space.default_role,
+            created_by=creator,
+            email=invitee.email,
+        )
+        c = Client()
+        c.force_login(invitee)
+
+        response = c.get(reverse("spaces:join", kwargs={"space_id": space.pk}))
+
+        assert response.status_code == 302
+        assert response.url == reverse(
+            "invitations:invite_accept", kwargs={"space_id": space.pk, "invite_id": invite.pk}
+        )
+
 
 @pytest.mark.django_db
 class TestSpaceSettingsView:
@@ -392,6 +481,23 @@ class TestSpaceSettingsView:
         c, _, space = open_space_with_client
         response = c.get(reverse("spaces:settings", kwargs={"space_id": space.pk}))
         assert response.status_code == 200
+
+    def test_settings_show_delete_confirmation_and_regular_save_button(self, open_space_with_client):
+        c, _, space = open_space_with_client
+
+        response = c.get(reverse("spaces:settings", kwargs={"space_id": space.pk}))
+
+        assert response.status_code == 200
+        assert b"Danger zone" in response.content
+        assert b"Delete space" in response.content
+        assert b'id="delete-space-dialog"' in response.content
+        assert b'Type <span class="font-medium">' in response.content
+        assert b"permanently removes it and all of its content" in response.content
+        assert b"This action is irreversible." in response.content
+        assert b"Permanently delete space" in response.content
+        assert b"onclick=" not in response.content
+        assert b'class="btn btn-primary btn-sm"' in response.content
+        assert b'class="btn btn-primary btn-sm w-full"' not in response.content
 
     def test_settings_editor_includes_upload_url_for_information_field(self, open_space_with_client):
         c, _, space = open_space_with_client
@@ -441,6 +547,15 @@ class TestSpaceSettingsView:
         assert response.status_code == 302
         space.refresh_from_db()
         assert space.is_public is False
+
+    def test_host_can_delete_space(self, open_space_with_client):
+        c, _, space = open_space_with_client
+
+        response = c.post(reverse("spaces:delete", kwargs={"space_id": space.pk}))
+
+        assert response.status_code == 302
+        assert response.url == reverse("spaces:list")
+        assert not Space.objects.filter(pk=space.pk).exists()
 
 
 @pytest.mark.django_db
@@ -580,6 +695,31 @@ class TestSpaceParticipantsView:
             in response.content
         )
 
+    def test_permission_manager_can_manage_participant_with_same_role(self, open_space_with_client):
+        c, creator, space = open_space_with_client
+        facilitator = Role.objects.get(space=space, label="Facilitator")
+        peer = UserFactory()
+        space_services.join_space(space=space, user=peer, role=facilitator)
+        participant = space.participants.get(user=peer)
+
+        response = c.get(reverse("spaces:participants", kwargs={"space_id": space.pk}))
+
+        assert response.status_code == 200
+        assert (
+            reverse(
+                "spaces:participant_role_update",
+                kwargs={"space_id": space.pk, "participant_id": participant.pk},
+            ).encode()
+            in response.content
+        )
+        assert (
+            reverse(
+                "spaces:participant_remove",
+                kwargs={"space_id": space.pk, "participant_id": participant.pk},
+            ).encode()
+            in response.content
+        )
+
     def test_non_participant_denied(self, open_space_with_client):
         _, _, space = open_space_with_client
         outsider = UserFactory()
@@ -593,6 +733,64 @@ class TestSpaceParticipantsView:
         anon = Client()
         response = anon.get(reverse("spaces:participants", kwargs={"space_id": space.pk}))
         assert response.status_code == 302
+
+    def test_participants_page_supports_search_and_pagination(self, open_space_with_client):
+        c, _, space = open_space_with_client
+        joiners = [UserFactory(name=f"Member {index}", email=f"member{index}@example.com") for index in range(11)]
+        for joiner in joiners:
+            space_services.join_space(space=space, user=joiner)
+
+        response = c.get(reverse("spaces:participants", kwargs={"space_id": space.pk}), {"participants_page": 2})
+
+        assert response.status_code == 200
+        assert b"Page 2 of 2" in response.content
+        assert joiners[-1].email.encode() in response.content
+
+        response = c.get(
+            reverse("spaces:participants", kwargs={"space_id": space.pk}),
+            {"tab": "participants", "participant_q": joiners[-1].email},
+        )
+
+        assert response.status_code == 200
+        assert joiners[-1].email.encode() in response.content
+        assert joiners[0].email.encode() not in response.content
+
+    def test_invitations_tab_shows_invited_pending_and_accepted_states(self, open_space_with_client):
+        c, creator, space = open_space_with_client
+        registered_user = UserFactory(email="pending@example.com")
+        accepted_user = UserFactory(email="accepted@example.com")
+
+        invited = SpaceInvite.objects.create(
+            space=space,
+            role=space.default_role,
+            created_by=creator,
+            email="invited@example.com",
+        )
+        pending = SpaceInvite.objects.create(
+            space=space,
+            role=space.default_role,
+            created_by=creator,
+            email=registered_user.email,
+        )
+        accepted = SpaceInvite.objects.create(
+            space=space,
+            role=space.default_role,
+            created_by=creator,
+            email=accepted_user.email,
+        )
+        accept_invite(invite=accepted, user=accepted_user)
+
+        response = c.get(reverse("spaces:participants", kwargs={"space_id": space.pk}), {"tab": "invitations"})
+
+        assert response.status_code == 200
+        assert invited.email.encode() in response.content
+        assert pending.email.encode() in response.content
+        assert accepted.email.encode() in response.content
+        assert b"Invited" in response.content
+        assert b"Pending" in response.content
+        assert b"Accepted" in response.content
+        assert b"Register first before this invitation can be accepted." in response.content
+        assert b"Registered as pending@example.com" in response.content
 
 
 @pytest.mark.django_db
@@ -621,6 +819,20 @@ class TestParticipantRemoveView:
             reverse("spaces:participant_remove", kwargs={"space_id": space.pk, "participant_id": participant.pk})
         )
         assert response.status_code == 403
+
+    def test_host_can_remove_participant_with_same_role(self, open_space_with_client):
+        c, _, space = open_space_with_client
+        facilitator = Role.objects.get(space=space, label="Facilitator")
+        peer = UserFactory()
+        space_services.join_space(space=space, user=peer, role=facilitator)
+        participant = Space.objects.get(pk=space.pk).participants.get(user=peer)
+
+        response = c.post(
+            reverse("spaces:participant_remove", kwargs={"space_id": space.pk, "participant_id": participant.pk})
+        )
+
+        assert response.status_code == 302
+        assert not Space.objects.get(pk=space.pk).participants.filter(user=peer).exists()
 
 
 @pytest.mark.django_db
@@ -675,6 +887,23 @@ class TestParticipantRoleUpdateView:
             {"role_id": str(observer.pk)},
         )
         assert response.status_code == 403
+
+    def test_host_can_update_participant_with_same_role(self, open_space_with_client):
+        c, _, space = open_space_with_client
+        facilitator = Role.objects.get(space=space, label="Facilitator")
+        observer = Role.objects.get(space=space, label="Observer")
+        peer = UserFactory()
+        space_services.join_space(space=space, user=peer, role=facilitator)
+        participant = Space.objects.get(pk=space.pk).participants.get(user=peer)
+
+        response = c.post(
+            reverse("spaces:participant_role_update", kwargs={"space_id": space.pk, "participant_id": participant.pk}),
+            {"role_id": str(observer.pk)},
+        )
+
+        assert response.status_code == 302
+        participant.refresh_from_db()
+        assert participant.role == observer
 
 
 @pytest.mark.django_db
@@ -746,7 +975,7 @@ class TestInviteViews:
     def test_invite_create_sets_expiry_from_settings(self, open_space_with_client):
         c, creator, space = open_space_with_client
 
-        response = c.post(reverse("spaces:invite_create", kwargs={"space_id": space.pk}), {})
+        response = c.post(reverse("invitations:invite_create", kwargs={"space_id": space.pk}), {})
 
         assert response.status_code == 302
         invite = SpaceInvite.objects.get(space=space, created_by=creator)
@@ -765,7 +994,7 @@ class TestInviteViews:
         c = Client()
         c.force_login(joiner)
 
-        response = c.post(reverse("spaces:invite_accept", kwargs={"space_id": space.pk, "invite_id": invite.pk}))
+        response = c.post(reverse("invitations:invite_accept", kwargs={"space_id": space.pk, "invite_id": invite.pk}))
 
         assert response.status_code == 302
         assert response.url == reverse("spaces:list")
@@ -782,11 +1011,50 @@ class TestInviteViews:
         c = Client()
         c.force_login(joiner)
 
-        response = c.get(reverse("spaces:invite_accept", kwargs={"space_id": space.pk, "invite_id": invite.pk}))
+        response = c.get(reverse("invitations:invite_accept", kwargs={"space_id": space.pk, "invite_id": invite.pk}))
 
         assert response.status_code == 200
         assert b"Accept & Join" in response.content
+        assert b"Reject invite" not in response.content
         assert f"Invite role: {invite.role.label}".encode() in response.content
+
+    def test_targeted_invite_accept_get_shows_reject_action(self, open_space_with_client):
+        _, creator, space = open_space_with_client
+        joiner = UserFactory(email="invitee@example.com")
+        invite = SpaceInvite.objects.create(
+            space=space,
+            role=space.default_role,
+            created_by=creator,
+            email=joiner.email,
+        )
+        c = Client()
+        c.force_login(joiner)
+
+        response = c.get(reverse("invitations:invite_accept", kwargs={"space_id": space.pk, "invite_id": invite.pk}))
+
+        assert response.status_code == 200
+        assert b"Reject invite" in response.content
+
+    def test_private_space_detail_redirects_targeted_invitee(self, open_space_with_client):
+        _, creator, space = open_space_with_client
+        invitee = UserFactory(email="invitee@example.com")
+        space.is_public = False
+        space.save(update_fields=["is_public"])
+        invite = SpaceInvite.objects.create(
+            space=space,
+            role=space.default_role,
+            created_by=creator,
+            email=invitee.email,
+        )
+        c = Client()
+        c.force_login(invitee)
+
+        response = c.get(reverse("spaces:detail", kwargs={"space_id": space.pk}))
+
+        assert response.status_code == 302
+        assert response.url == reverse(
+            "invitations:invite_accept", kwargs={"space_id": space.pk, "invite_id": invite.pk}
+        )
 
     def test_invite_accept_rejects_not_yet_active_space(self):
         creator = UserFactory()
@@ -805,7 +1073,7 @@ class TestInviteViews:
         c = Client()
         c.force_login(joiner)
 
-        response = c.post(reverse("spaces:invite_accept", kwargs={"space_id": space.pk, "invite_id": invite.pk}))
+        response = c.post(reverse("invitations:invite_accept", kwargs={"space_id": space.pk, "invite_id": invite.pk}))
 
         assert response.status_code == 302
         assert response.url == reverse("spaces:list")
@@ -824,8 +1092,169 @@ class TestInviteViews:
         c = Client()
         c.force_login(joiner)
 
-        response = c.post(reverse("spaces:invite_accept", kwargs={"space_id": space.pk, "invite_id": invite.pk}))
+        response = c.post(reverse("invitations:invite_accept", kwargs={"space_id": space.pk, "invite_id": invite.pk}))
 
         assert response.status_code == 302
         assert response.url == reverse("spaces:detail", kwargs={"space_id": space.pk})
         assert Space.objects.get(pk=space.pk).participants.filter(user=joiner).exists()
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_bulk_invite_sends_registered_and_signup_emails(self, open_space_with_client):
+        c, _, space = open_space_with_client
+        registered_user = UserFactory(email="registered@example.com")
+
+        response = c.post(
+            reverse("invitations:invitation_bulk_create", kwargs={"space_id": space.pk}),
+            {"emails": f"{registered_user.email}\nnew@example.com", "role_id": str(space.default_role_id)},
+        )
+
+        assert response.status_code == 302
+        invites = SpaceInvite.objects.filter(space=space).exclude(email="").order_by("email")
+        assert list(invites.values_list("email", flat=True)) == ["new@example.com", "registered@example.com"]
+        assert len(mail.outbox) == 2
+        assert any(message.to == ["registered@example.com"] and "Sign in" in message.body for message in mail.outbox)
+        assert any(message.to == ["new@example.com"] and "Register first" in message.body for message in mail.outbox)
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_resend_pending_invites_refreshes_sent_timestamp(self, open_space_with_client):
+        c, creator, space = open_space_with_client
+        invite = SpaceInvite.objects.create(
+            space=space,
+            role=space.default_role,
+            created_by=creator,
+            email="pending@example.com",
+            last_sent_at=timezone.now() - timezone.timedelta(days=2),
+            expires_at=timezone.now() - timezone.timedelta(days=1),
+        )
+
+        response = c.post(reverse("invitations:invitation_resend_pending", kwargs={"space_id": space.pk}))
+
+        assert response.status_code == 302
+        invite.refresh_from_db()
+        assert invite.last_sent_at > timezone.now() - timezone.timedelta(minutes=1)
+        assert invite.expires_at > timezone.now()
+        assert len(mail.outbox) == 1
+        assert mail.outbox[0].to == [invite.email]
+
+    def test_invite_accept_redirects_unregistered_email_to_signup(self, open_space_with_client):
+        _, creator, space = open_space_with_client
+        invite = SpaceInvite.objects.create(
+            space=space,
+            role=space.default_role,
+            created_by=creator,
+            email="invitee@example.com",
+        )
+
+        response = Client().get(
+            reverse("invitations:invite_accept", kwargs={"space_id": space.pk, "invite_id": invite.pk})
+        )
+
+        assert response.status_code == 302
+        assert reverse("account_signup") in response.url
+        assert str(invite.pk) in response.url
+
+    def test_targeted_invite_accept_marks_invitation_accepted(self, open_space_with_client):
+        _, creator, space = open_space_with_client
+        joiner = UserFactory(email="invitee@example.com")
+        invite = SpaceInvite.objects.create(
+            space=space,
+            role=space.default_role,
+            created_by=creator,
+            email=joiner.email,
+        )
+        c = Client()
+        c.force_login(joiner)
+
+        response = c.post(reverse("invitations:invite_accept", kwargs={"space_id": space.pk, "invite_id": invite.pk}))
+
+        assert response.status_code == 302
+        invite.refresh_from_db()
+        assert invite.accepted_by == joiner
+        assert invite.accepted_at is not None
+        assert SpaceParticipant.objects.filter(space=space, user=joiner).exists()
+
+    def test_targeted_invite_rejects_different_email_address(self, open_space_with_client):
+        _, creator, space = open_space_with_client
+        invite = SpaceInvite.objects.create(
+            space=space,
+            role=space.default_role,
+            created_by=creator,
+            email="intended@example.com",
+        )
+        wrong_user = UserFactory(email="other@example.com")
+        c = Client()
+        c.force_login(wrong_user)
+
+        response = c.post(reverse("invitations:invite_accept", kwargs={"space_id": space.pk, "invite_id": invite.pk}))
+
+        assert response.status_code == 302
+        assert response.url == reverse("spaces:list")
+        invite.refresh_from_db()
+        assert invite.accepted_at is None
+        assert not SpaceParticipant.objects.filter(space=space, user=wrong_user).exists()
+
+    def test_targeted_invite_can_be_rejected(self, open_space_with_client):
+        _, creator, space = open_space_with_client
+        invitee = UserFactory(email="invitee@example.com")
+        invite = SpaceInvite.objects.create(
+            space=space,
+            role=space.default_role,
+            created_by=creator,
+            email=invitee.email,
+        )
+        c = Client()
+        c.force_login(invitee)
+
+        response = c.post(reverse("invitations:invite_reject", kwargs={"space_id": space.pk, "invite_id": invite.pk}))
+
+        assert response.status_code == 302
+        assert response.url == reverse("spaces:list")
+        invite.refresh_from_db()
+        assert invite.rejected_by == invitee
+        assert invite.rejected_at is not None
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_reinvite_restores_rejected_invitation(self, open_space_with_client):
+        c, creator, space = open_space_with_client
+        invitee = UserFactory(email="invitee@example.com")
+        invite = SpaceInvite.objects.create(
+            space=space,
+            role=space.default_role,
+            created_by=creator,
+            email=invitee.email,
+            rejected_at=timezone.now() - timezone.timedelta(hours=1),
+            rejected_by=invitee,
+        )
+
+        response = c.post(
+            reverse("invitations:invitation_reinvite", kwargs={"space_id": space.pk, "invite_id": invite.pk})
+        )
+
+        assert response.status_code == 302
+        invite.refresh_from_db()
+        assert invite.rejected_at is None
+        assert invite.rejected_by is None
+        assert len(mail.outbox) == 1
+        assert mail.outbox[0].to == [invite.email]
+
+    def test_rejected_invite_does_not_appear_in_invited_spaces(self):
+        creator = UserFactory()
+        invitee = UserFactory(email="invitee@example.com")
+        space = space_services.create_space(title="Invite Only", created_by=creator, is_public=False)
+        space_services.open_space(space=space)
+        SpaceInvite.objects.create(
+            space=space,
+            role=space.default_role,
+            created_by=creator,
+            email=invitee.email,
+            rejected_at=timezone.now() - timezone.timedelta(minutes=5),
+            rejected_by=invitee,
+        )
+        c = Client()
+        c.force_login(invitee)
+
+        response = c.get(reverse("spaces:list"))
+
+        assert response.status_code == 200
+        assert b"Invited Spaces" not in response.content
+        assert space.title.encode() not in response.content

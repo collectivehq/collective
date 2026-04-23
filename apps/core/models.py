@@ -62,6 +62,38 @@ class ResolvableModel(models.Model):
         abstract = True
 
 
+class AcceptableModel(models.Model):
+    """Tracks acceptance state for records that can be accepted by a user."""
+
+    accepted_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    accepted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="%(app_label)s_%(class)s_accepted",
+    )
+
+    class Meta:
+        abstract = True
+
+
+class RejectableModel(models.Model):
+    """Tracks rejection state for records that can be rejected by a user."""
+
+    rejected_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    rejected_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="%(app_label)s_%(class)s_rejected",
+    )
+
+    class Meta:
+        abstract = True
+
+
 class CRUDModel(BaseModel, UpdateableModel, DeletableModel):
     """Full lifecycle abstract model for created, updated, soft-deleted records."""
 

@@ -20,12 +20,16 @@ from apps.spaces.services import touch_space
 from apps.users.models import User
 
 
-def _ordered_inline_children(discussion: Discussion, *, exclude_id: uuid_mod.UUID | None = None) -> list[Post | Link]:
+def _ordered_inline_children(
+    discussion: Discussion,
+    *,
+    exclude_ids: set[uuid_mod.UUID] | None = None,
+) -> list[Post | Link]:
     posts_qs = Post.objects.filter(discussion=discussion, deleted_at__isnull=True)
     links_qs = Link.objects.filter(discussion=discussion, deleted_at__isnull=True)
-    if exclude_id is not None:
-        posts_qs = posts_qs.exclude(pk=exclude_id)
-        links_qs = links_qs.exclude(pk=exclude_id)
+    if exclude_ids:
+        posts_qs = posts_qs.exclude(pk__in=exclude_ids)
+        links_qs = links_qs.exclude(pk__in=exclude_ids)
     posts = list(posts_qs.select_related("created_by"))
     links = list(links_qs.select_related("created_by", "target"))
     return sorted(
@@ -156,34 +160,71 @@ def delete_link(*, link: Link) -> Link:
     return link
 
 
+def _sorted_items_for_move(items: list[Post | Link]) -> list[Post | Link]:
+    return sorted(
+        items,
+        key=lambda child: (str(child.discussion_id), child.sequence_index, child.created_at, str(child.pk)),
+    )
+
+
+def move_discussion_items(
+    *,
+    items: list[Post | Link],
+    target_discussion: Discussion,
+    position: int = -1,
+    target_order_ids: list[uuid_mod.UUID] | None = None,
+) -> list[Post | Link]:
+    if not items:
+        return []
+
+    item_ids = {item.pk for item in items}
+    item_map = {item.pk: item for item in items}
+    ordered_items = _sorted_items_for_move(items)
+    if target_order_ids is not None:
+        ordered_items = [item_map[item_id] for item_id in target_order_ids if item_id in item_map]
+
+    with transaction.atomic():
+        source_discussions = {item.discussion for item in ordered_items}
+        for item in ordered_items:
+            item.discussion = target_discussion
+            item.sequence_index = next_sequence_index(target_discussion)
+            item.save(update_fields=["discussion", "sequence_index"])
+
+        existing_target_children = _ordered_inline_children(target_discussion, exclude_ids=item_ids)
+        if target_order_ids is not None:
+            children_by_id = {child.pk: child for child in [*existing_target_children, *ordered_items]}
+            if set(children_by_id) != set(target_order_ids):
+                msg = "Target ordering did not match the selected destination discussion"
+                raise ValueError(msg)
+            target_children = [children_by_id[item_id] for item_id in target_order_ids]
+        else:
+            target_children = existing_target_children
+            if position < 0 or position > len(target_children):
+                target_children.extend(ordered_items)
+            else:
+                target_children[position:position] = ordered_items
+        _reindex_inline_children(target_children)
+
+        for source_discussion in source_discussions:
+            if source_discussion.pk == target_discussion.pk:
+                continue
+            _reindex_inline_children(_ordered_inline_children(source_discussion))
+
+        touch_space(space=target_discussion.space)
+
+    for item in ordered_items:
+        item.refresh_from_db()
+
+    return ordered_items
+
+
 def move_discussion_item(
     *,
     item: Post | Link,
     target_discussion: Discussion,
     position: int = -1,
 ) -> Post | Link:
-    with transaction.atomic():
-        old_discussion = item.discussion
-        item.discussion = target_discussion
-        item.sequence_index = next_sequence_index(target_discussion)
-        item.save(update_fields=["discussion", "sequence_index"])
-
-        siblings = _ordered_inline_children(target_discussion, exclude_id=item.pk)
-        if position < 0 or position > len(siblings):
-            siblings.append(item)
-        else:
-            siblings.insert(position, item)
-        _reindex_inline_children(siblings)
-
-        if old_discussion.pk != target_discussion.pk:
-            _reindex_inline_children(_ordered_inline_children(old_discussion))
-
-        item.refresh_from_db()
-        touch_space(space=target_discussion.space)
-        if old_discussion.space_id != target_discussion.space_id:
-            touch_space(space=old_discussion.space)
-
-    return item
+    return move_discussion_items(items=[item], target_discussion=target_discussion, position=position)[0]
 
 
 def promote_post_to_discussion(*, post: Post) -> tuple[Discussion, Link]:
@@ -220,6 +261,7 @@ __all__ = [
     "delete_link",
     "delete_post",
     "move_discussion_item",
+    "move_discussion_items",
     "promote_post_to_discussion",
     "update_post",
 ]

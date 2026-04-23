@@ -16,10 +16,17 @@
           {% include "account/_form_field.html" %}
         {% endfor %}
         {% if form.non_field_errors %}
-          <div class="alert alert-error mb-3">
-            {% for error in form.non_field_errors %}
-              <span>{{ error }}</span>
-            {% endfor %}
+          <div class="toast static mb-3 w-full max-w-none items-stretch p-0">
+            <div role="alert" class="alert alert-error shadow-sm">
+              <div class="flex items-start gap-3">
+                <i data-lucide="circle-x" class="mt-0.5 h-4 w-4 flex-shrink-0"></i>
+                <div class="space-y-1">
+                  {% for error in form.non_field_errors %}
+                    <span class="block">{{ error }}</span>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
           </div>
         {% endif %}
         {% if redirect_field_value %}

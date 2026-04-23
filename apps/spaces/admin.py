@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from django.contrib import admin
 
-from apps.spaces.models import Role, Space, SpaceInvite, SpaceParticipant
+from apps.spaces.models import Role, Space, SpaceParticipant
 
 
 class RoleInline(admin.TabularInline):  # type: ignore[type-arg]
@@ -64,13 +64,3 @@ class SpaceParticipantAdmin(admin.ModelAdmin):  # type: ignore[type-arg]
     search_fields = ("user__email", "user__username", "space__title")
     search_help_text = "Search by user email / username or space title."
     raw_id_fields = ("user", "space", "role")
-
-
-@admin.register(SpaceInvite)
-class SpaceInviteAdmin(admin.ModelAdmin):  # type: ignore[type-arg]
-    list_display = ("space", "role", "created_by", "created_at", "expires_at")
-    list_select_related = ("space", "role", "created_by")
-    search_fields = ("space__title", "created_by__email", "created_by__username")
-    search_help_text = "Search by space title or creator email / username."
-    readonly_fields = ("created_at", "expires_at")
-    raw_id_fields = ("space", "role", "created_by")

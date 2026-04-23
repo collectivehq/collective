@@ -3,7 +3,15 @@ from __future__ import annotations
 from django.conf import settings
 from django.db import models
 
-from apps.core.models import BaseModel, CRUDModel, DeletableModel, ResolvableModel, UpdateableModel
+from apps.core.models import (
+    AcceptableModel,
+    BaseModel,
+    CRUDModel,
+    DeletableModel,
+    RejectableModel,
+    ResolvableModel,
+    UpdateableModel,
+)
 
 
 class ExampleBase(BaseModel):
@@ -21,11 +29,18 @@ class ExampleResolvable(BaseModel, ResolvableModel):
         app_label = "core_tests"
 
 
+class ExampleAcceptReject(BaseModel, AcceptableModel, RejectableModel):
+    class Meta:
+        app_label = "core_tests"
+
+
 def test_core_abstract_models_are_abstract() -> None:
     assert BaseModel._meta.abstract is True
     assert UpdateableModel._meta.abstract is True
     assert DeletableModel._meta.abstract is True
     assert ResolvableModel._meta.abstract is True
+    assert AcceptableModel._meta.abstract is True
+    assert RejectableModel._meta.abstract is True
     assert CRUDModel._meta.abstract is True
 
 
@@ -59,3 +74,26 @@ def test_resolvable_model_fields_have_expected_options() -> None:
     assert resolved_by.null is True
     assert resolved_by.blank is True
     assert resolved_by.related_model._meta.label_lower == settings.AUTH_USER_MODEL.lower()
+
+
+def test_accept_reject_models_fields_have_expected_options() -> None:
+    accepted_at = ExampleAcceptReject._meta.get_field("accepted_at")
+    accepted_by = ExampleAcceptReject._meta.get_field("accepted_by")
+    rejected_at = ExampleAcceptReject._meta.get_field("rejected_at")
+    rejected_by = ExampleAcceptReject._meta.get_field("rejected_by")
+
+    assert isinstance(accepted_at, models.DateTimeField)
+    assert accepted_at.null is True
+    assert accepted_at.blank is True
+    assert isinstance(accepted_by, models.ForeignKey)
+    assert accepted_by.null is True
+    assert accepted_by.blank is True
+    assert accepted_by.related_model._meta.label_lower == settings.AUTH_USER_MODEL.lower()
+
+    assert isinstance(rejected_at, models.DateTimeField)
+    assert rejected_at.null is True
+    assert rejected_at.blank is True
+    assert isinstance(rejected_by, models.ForeignKey)
+    assert rejected_by.null is True
+    assert rejected_by.blank is True
+    assert rejected_by.related_model._meta.label_lower == settings.AUTH_USER_MODEL.lower()

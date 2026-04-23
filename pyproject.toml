@@ -5,6 +5,8 @@ description = "A structured collective dialogue platform"
 requires-python = ">=3.14"
 dependencies = [
     "Django>=6.0,<7.0",
+    "django-storages[s3]>=1.14",
+    "gunicorn>=23.0",
     "psycopg[binary]>=3.3",
     "django-allauth>=65.16",
     "django-treebeard>=5.0",

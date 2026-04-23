@@ -101,7 +101,7 @@
           <div class="modal-action">
             <button type="button" class="btn btn-primary btn-sm"
                     :disabled="!selectedDiscussion"
-                    @click="step = 2; htmx.ajax('GET', '{% url 'posts:discussion_item_move_positions' space_id=space.pk item_id=link.pk %}' + '?discussion_id=' + selectedDiscussion, {target: '#move-positions-{{ link.pk }}', swap: 'innerHTML'})">
+                    @click="step = 2; htmx.ajax('GET', '{% url 'posts:discussion_items_move_positions' space_id=space.pk %}' + '?discussion_id=' + selectedDiscussion + '&item_ids={{ link.pk }}', {target: '#move-positions-{{ link.pk }}', swap: 'innerHTML'})">
               Next
             </button>
             <button type="button" class="btn btn-ghost btn-sm" @click="$refs.moveDialog.close()">Cancel</button>

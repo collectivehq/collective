@@ -1,9 +1,12 @@
 {% extends "base.html" %}
+{% load spaces_tags %}
 {% block title %}Spaces — Collective{% endblock %}
 {% block content %}
 <div class="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
   <div class="space-y-1">
-    <h1 class="text-2xl font-bold">Spaces</h1>
+    <div class="flex items-center gap-3">
+      <h1 class="text-2xl font-bold">Spaces</h1>
+    </div>
   </div>
   {% if user.is_authenticated %}
     <a href="{% url 'spaces:create' %}" class="btn btn-primary btn-sm">Create Space</a>
@@ -11,9 +14,13 @@
 </div>
 
 {% if user.is_authenticated and not participating and public_spaces %}
-<div class="alert alert-soft mb-6">
-  <i data-lucide="compass" class="h-4 w-4"></i>
-  <span>You have not joined any spaces yet. Start with one of the public spaces below.</span>
+<div class="toast static mb-6 w-full max-w-none items-stretch p-0">
+  <div role="status" class="alert alert-soft shadow-sm">
+    <div class="flex items-start gap-3">
+      <i data-lucide="compass" class="mt-0.5 h-4 w-4 flex-shrink-0"></i>
+      <span>You have not joined any spaces yet. Start with one of the public spaces below.</span>
+    </div>
+  </div>
 </div>
 {% endif %}
 
@@ -21,12 +28,55 @@
 <section class="mb-8">
   <div class="mb-3 flex items-center justify-between gap-3">
     <h2 class="text-lg font-semibold">Your Spaces</h2>
-    <span class="badge badge-ghost badge-sm">{{ participating|length }}</span>
+    <span class="badge badge-neutral badge-sm">{{ participating|length }}</span>
   </div>
   <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
     {% for space in participating %}
       {% url 'spaces:detail' space_id=space.pk as card_url %}
       {% include "spaces/_space_card.html" with card_url=card_url show_lifecycle=True %}
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% if invited_spaces %}
+<section class="mb-8">
+  <div class="mb-3 flex items-center justify-between gap-3">
+    <div class="space-y-1">
+      <h2 class="text-lg font-semibold">Invited Spaces</h2>
+      <p class="text-sm text-base-content/60">Spaces waiting for your response stay here until you join or decline.</p>
+    </div>
+    <span class="badge badge-neutral badge-sm">{{ invited_spaces|length }}</span>
+  </div>
+  <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+    {% for item in invited_spaces %}
+    <a href="{% url 'invitations:invite_accept' space_id=item.space.pk invite_id=item.invite.pk %}"
+       class="card card-border bg-base-100 shadow-sm transition-shadow hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40">
+      <div class="card-body gap-4 p-5">
+        <div class="space-y-2">
+          <div class="flex flex-wrap items-center gap-2">
+            <h3 class="card-title text-base">{{ item.space.title }}</h3>
+            <span class="badge badge-outline badge-sm">Invited</span>
+          </div>
+          <p class="text-sm text-base-content/60 line-clamp-2">{{ item.space.description|truncatewords:20 }}</p>
+        </div>
+        <div class="flex flex-wrap gap-3 mt-2 items-center">
+          {% lifecycle_badge item.space %}
+          {% if not item.space.is_public %}
+          <span class="badge badge-outline badge-sm">Private</span>
+          {% endif %}
+          <span class="badge badge-outline badge-sm">{{ item.invite.role.label }}</span>
+        </div>
+        <div class="flex flex-wrap gap-3 mt-1 text-xs text-base-content/40">
+          <span class="flex items-center gap-1">
+            <i data-lucide="mail" class="w-3 h-3"></i> Sent {{ item.invite.last_sent_at|timesince }} ago
+          </span>
+          <span class="flex items-center gap-1">
+            <i data-lucide="clock-3" class="w-3 h-3"></i> Expires {{ item.invite.expires_at|date:"M j, Y" }}
+          </span>
+        </div>
+      </div>
+    </a>
     {% endfor %}
   </div>
 </section>
@@ -38,7 +88,7 @@
     <div class="space-y-1">
       <h2 class="text-lg font-semibold">Public Spaces</h2>
     </div>
-    <span class="badge badge-ghost badge-sm">{{ public_spaces|length }}</span>
+    <span class="badge badge-neutral badge-sm">{{ public_spaces|length }}</span>
   </div>
   <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
     {% for space in public_spaces %}
@@ -53,7 +103,7 @@
 </section>
 {% endif %}
 
-{% if not participating and not public_spaces %}
+{% if not participating and not invited_spaces and not public_spaces %}
 <div class="card card-dash bg-base-100">
   <div class="card-body items-center py-12 text-center">
     <div class="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-base-200">

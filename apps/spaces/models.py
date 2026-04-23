@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import datetime
 import uuid
 
 from django.conf import settings
@@ -14,10 +13,6 @@ from django.utils import timezone
 from apps.core.models import BaseModel, CRUDModel
 from apps.spaces.constants import VALID_OPINION_TYPES, VALID_REACTION_TYPES
 from apps.spaces.querysets import SpaceQuerySet
-
-
-def default_invite_expiry() -> datetime.datetime:
-    return timezone.now() + datetime.timedelta(days=settings.INVITE_DEFAULT_EXPIRY_DAYS)
 
 
 def validate_opinion_types(value: list[str]) -> None:
@@ -189,27 +184,3 @@ class SpaceParticipant(BaseModel):
         super().clean()
         if self.role_id is not None and self.role is not None and self.role.space_id != self.space_id:
             raise ValidationError({"role": "Role must belong to the participant's space."})
-
-
-class SpaceInvite(BaseModel):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    space = models.ForeignKey("spaces.Space", on_delete=models.CASCADE, related_name="invites")
-    role = models.ForeignKey("spaces.Role", on_delete=models.CASCADE, related_name="invites")
-    expires_at = models.DateTimeField(default=default_invite_expiry, db_index=True)
-
-    class Meta:
-        db_table = "space_invites"
-        verbose_name = "space invite"
-        verbose_name_plural = "space invites"
-
-    def __str__(self) -> str:
-        return f"Invite to {self.space} as {self.role}"
-
-    def clean(self) -> None:
-        super().clean()
-        if self.role_id is not None and self.role is not None and self.role.space_id != self.space_id:
-            raise ValidationError({"role": "Role must belong to the invite's space."})
-
-    @property
-    def is_expired(self) -> bool:
-        return timezone.now() >= self.expires_at

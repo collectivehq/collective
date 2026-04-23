@@ -31,6 +31,10 @@
         You have been invited to join this space as
         <span class="font-medium text-base-content">{{ invite.role.label }}</span>.
       </p>
+      <p class="text-xs text-base-content/50">Invite role: {{ invite.role.label }}</p>
+      {% if invite.email %}
+      <p class="text-xs text-base-content/50">Invite sent to {{ invite.email }}.</p>
+      {% endif %}
       {% endif %}
 
       {% if space.information %}
@@ -69,10 +73,18 @@
 
       <div class="card-actions flex-col-reverse sm:flex-row sm:justify-between">
         <a href="{% url 'spaces:list' %}" class="btn btn-ghost btn-sm sm:btn-md">← Back to spaces</a>
-        <form method="post">
-          {% csrf_token %}
-          <button type="submit" class="btn btn-primary btn-sm sm:btn-md">{% if invite %}Accept & Join{% else %}Join Space{% endif %}</button>
-        </form>
+        <div class="flex flex-wrap justify-end gap-3">
+          {% if invite and can_reject_invite %}
+          <form method="post" action="{% url 'invitations:invite_reject' space_id=space.pk invite_id=invite.pk %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-ghost btn-sm text-error sm:btn-md">Reject invite</button>
+          </form>
+          {% endif %}
+          <form method="post">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-primary btn-sm sm:btn-md">{% if invite %}Accept & Join{% else %}Join Space{% endif %}</button>
+          </form>
+        </div>
       </div>
     </div>
   </div>

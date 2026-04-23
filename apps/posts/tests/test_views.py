@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import override_settings
 from django.urls import reverse
 
 from apps.posts import services as post_services
+from apps.posts import views as post_views
 from apps.spaces import services as space_services
 from apps.spaces.models import Role
 
@@ -317,3 +320,30 @@ class TestPostPermissionViews:
         response = client.post(reverse("posts:image_upload", kwargs={"space_id": space.pk}))
 
         assert response.status_code == 403
+
+    @override_settings(MEDIA_URL="http://collective-media.web.garage.localhost:3902/media/")
+    def test_image_upload_returns_public_media_url(self, client, open_space_with_users, monkeypatch) -> None:
+        class StubStorage:
+            def save(self, name: str, content) -> str:  # noqa: ANN001
+                return name
+
+            def url(self, name: str) -> str:
+                return f"http://collective-garage:3900/collective-media/media/{name}"
+
+        space, _, participant, _ = open_space_with_users
+        client.force_login(participant)
+        monkeypatch.setattr(post_views, "default_storage", StubStorage())
+        upload = SimpleUploadedFile(
+            "tiny.png",
+            bytes.fromhex(
+                "89504e470d0a1a0a0000000d4948445200000001000000010804000000b51c0c020000000b4944415478da63fcff1f0003030200ef9aed4f0000000049454e44ae426082"
+            ),
+            content_type="image/png",
+        )
+
+        response = client.post(reverse("posts:image_upload", kwargs={"space_id": space.pk}), {"file": upload})
+
+        assert response.status_code == 200
+        assert response.json()["location"].startswith(
+            "http://collective-media.web.garage.localhost:3902/media/uploads/"
+        )

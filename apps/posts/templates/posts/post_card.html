@@ -87,9 +87,13 @@
           class="space-y-2">
       {% csrf_token %}
       {% if post.is_draft and resolution %}
-      <div class="alert alert-warning text-sm">
-        <i data-lucide="alert-triangle" class="w-4 h-4"></i>
-        <span>Publishing this draft will reopen the discussion.</span>
+      <div class="toast static w-full max-w-none items-stretch p-0 text-sm">
+        <div role="alert" class="alert alert-warning shadow-sm">
+          <div class="flex items-start gap-3">
+            <i data-lucide="triangle-alert" class="mt-0.5 h-4 w-4 flex-shrink-0"></i>
+            <span>Publishing this draft will reopen the discussion.</span>
+          </div>
+        </div>
       </div>
       {% endif %}
       <textarea name="content" class="tinymce-editor" {% if can_upload_images %}data-upload-url="{% url 'posts:image_upload' space_id=space.pk %}"{% endif %}>{{ post.content }}</textarea>
@@ -157,7 +161,7 @@
           <div class="modal-action">
             <button type="button" class="btn btn-primary btn-sm"
                     :disabled="!selectedDiscussion"
-                    @click="step = 2; htmx.ajax('GET', '{% url 'posts:discussion_item_move_positions' space_id=space.pk item_id=post.pk %}' + '?discussion_id=' + selectedDiscussion, {target: '#move-positions-{{ post.pk }}', swap: 'innerHTML'})">
+                    @click="step = 2; htmx.ajax('GET', '{% url 'posts:discussion_items_move_positions' space_id=space.pk %}' + '?discussion_id=' + selectedDiscussion + '&item_ids={{ post.pk }}', {target: '#move-positions-{{ post.pk }}', swap: 'innerHTML'})">
               Next
             </button>
             <button type="button" class="btn btn-ghost btn-sm" @click="$refs.moveDialog.close()">Cancel</button>

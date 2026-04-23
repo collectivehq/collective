@@ -155,32 +155,6 @@ class Migration(migrations.Migration):
             },
         ),
         migrations.CreateModel(
-            name="SpaceInvite",
-            fields=[
-                ("created_at", models.DateTimeField(auto_now_add=True)),
-                (
-                    "id",
-                    models.UUIDField(
-                        default=uuid.uuid4,
-                        editable=False,
-                        primary_key=True,
-                        serialize=False,
-                    ),
-                ),
-                (
-                    "expires_at",
-                    models.DateTimeField(
-                        db_index=True, default=apps.spaces.models.default_invite_expiry
-                    ),
-                ),
-            ],
-            options={
-                "verbose_name": "space invite",
-                "verbose_name_plural": "space invites",
-                "db_table": "space_invites",
-            },
-        ),
-        migrations.CreateModel(
             name="SpaceParticipant",
             fields=[
                 ("created_at", models.DateTimeField(auto_now_add=True)),

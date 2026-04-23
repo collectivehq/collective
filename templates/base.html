@@ -29,6 +29,26 @@
 </head>
 <body class="min-h-screen bg-base-200" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
   <div id="htmx-progress" style="width: 0%; display: none;"></div>
+  <div id="flash-messages" class="toast toast-bottom toast-end z-50 w-full max-w-sm pb-2 sm:max-w-md" aria-live="polite" aria-atomic="true">
+    {% if messages %}
+      {% for message in messages %}
+        <div
+          role="alert"
+          class="alert {% if message.tags == 'success' %}alert-success{% elif message.tags == 'warning' %}alert-warning{% elif message.tags == 'error' %}alert-error{% else %}alert-info{% endif %} pointer-events-auto flex w-full items-start justify-between gap-3 shadow-lg"
+          x-data="{ show: true }"
+          x-show="show"
+          x-init="setTimeout(() => show = false, 5000)"
+          x-transition.opacity.scale.90.duration.200ms
+        >
+          <div class="flex min-w-0 flex-1 items-start gap-3">
+            <i data-lucide="{% if message.tags == 'success' %}circle-check-big{% elif message.tags == 'warning' %}triangle-alert{% elif message.tags == 'error' %}circle-x{% else %}info{% endif %}" class="mt-0.5 h-4 w-4 flex-shrink-0"></i>
+            <span class="min-w-0">{{ message }}</span>
+          </div>
+          <button @click="show = false" class="btn btn-ghost btn-xs btn-circle" aria-label="Dismiss message">✕</button>
+        </div>
+      {% endfor %}
+    {% endif %}
+  </div>
   <div class="navbar bg-base-100 shadow-sm">
     <div class="flex-1">
       <a href="{% if user.is_authenticated %}{% url 'spaces:list' %}{% else %}{% url 'pages:home' %}{% endif %}" class="btn btn-ghost text-xl">
@@ -76,16 +96,6 @@
   </div>
 
   <main class="container mx-auto px-4 py-6">
-    <div id="flash-messages" class="space-y-4">
-      {% if messages %}
-        {% for message in messages %}
-          <div class="alert alert-{{ message.tags }} flex justify-between" x-data="{ show: true }" x-show="show" x-init="setTimeout(() => show = false, 5000)" x-transition>
-            <span>{{ message }}</span>
-            <button @click="show = false" class="btn btn-ghost btn-xs">✕</button>
-          </div>
-        {% endfor %}
-      {% endif %}
-    </div>
     {% block content %}{% endblock %}
   </main>
 
@@ -219,11 +229,38 @@
     }
 
     function initMoveSortable(container) {
-      var el = container.querySelector('[data-moved-post-id]');
+      var el = container.querySelector('[data-moved-item-token]');
       if (!el || el._sortableInit) return;
-      var movedId = el.dataset.movedPostId;
+      var movedId = el.dataset.movedItemToken;
       var posInput = document.getElementById('move-position-input-' + movedId);
+      var itemOrderContainer = document.getElementById('move-item-order-inputs-' + movedId);
+      var targetOrderContainer = document.getElementById('move-target-order-inputs-' + movedId);
       if (!posInput) return;
+      function updateMoveInputs() {
+        var items = el.querySelectorAll('[data-id]');
+        var movedIndex = 0;
+        var movedIds = [];
+        var orderedIds = [];
+        for (var i = 0; i < items.length; i++) {
+          var itemId = items[i].dataset.id;
+          orderedIds.push(itemId);
+          if (items[i].dataset.movedItem === 'true') {
+            if (!movedIds.length) movedIndex = i;
+            movedIds.push(itemId);
+          }
+        }
+        posInput.value = movedIndex;
+        if (itemOrderContainer) {
+          itemOrderContainer.innerHTML = movedIds.map(function(itemId) {
+            return '<input type="hidden" name="item_ids" value="' + itemId + '" data-move-item-input>';
+          }).join('');
+        }
+        if (targetOrderContainer) {
+          targetOrderContainer.innerHTML = orderedIds.map(function(itemId) {
+            return '<input type="hidden" name="ordered_target_ids" value="' + itemId + '" data-target-order-input>';
+          }).join('');
+        }
+      }
       el._sortableInit = true;
       Sortable.create(el, {
         animation: 150,
@@ -232,41 +269,60 @@
         fallbackTolerance: 3,
         draggable: '> div[data-id]',
         handle: '.drag-handle',
-        onEnd: function() {
-          var items = el.querySelectorAll('[data-id]');
-          for (var i = 0; i < items.length; i++) {
-            if (items[i].dataset.id === movedId) {
-              posInput.value = i;
-              break;
-            }
-          }
-        }
+        onEnd: updateMoveInputs
       });
+      updateMoveInputs();
     }
 
     function showFlashMessage(message, level) {
       var container = document.getElementById('flash-messages');
       if (!container || !message) return;
 
-      var alert = document.createElement('div');
-      alert.className = 'alert alert-' + (level || 'error') + ' flex justify-between gap-3';
+      var tone = level || 'error';
+      var iconName = 'info';
+      if (tone === 'success') iconName = 'circle-check-big';
+      else if (tone === 'warning') iconName = 'triangle-alert';
+      else if (tone === 'error') iconName = 'circle-x';
+
+      var toast = document.createElement('div');
+      toast.className = 'alert alert-' + tone + ' pointer-events-auto flex w-full items-start justify-between gap-3 shadow-lg';
+      toast.setAttribute('role', 'alert');
+      toast.setAttribute('x-data', '{ show: true }');
+      toast.setAttribute('x-show', 'show');
+      toast.setAttribute('x-init', 'setTimeout(() => show = false, 5000)');
+      toast.setAttribute('x-transition.opacity.scale.90.duration.200ms', '');
+
+      var body = document.createElement('div');
+      body.className = 'flex min-w-0 flex-1 items-start gap-3';
+
+      var icon = document.createElement('i');
+      icon.setAttribute('data-lucide', iconName);
+      icon.className = 'mt-0.5 h-4 w-4 flex-shrink-0';
+      body.appendChild(icon);
 
       var text = document.createElement('span');
+      text.className = 'min-w-0';
       text.textContent = message;
-      alert.appendChild(text);
+      body.appendChild(text);
+      toast.appendChild(body);
 
       var close = document.createElement('button');
       close.type = 'button';
-      close.className = 'btn btn-ghost btn-xs';
+      close.className = 'btn btn-ghost btn-xs btn-circle';
+      close.setAttribute('aria-label', 'Dismiss message');
       close.textContent = '✕';
       close.addEventListener('click', function() {
-        alert.remove();
+        toast.remove();
       });
-      alert.appendChild(close);
+      toast.appendChild(close);
 
-      container.prepend(alert);
+      container.prepend(toast);
+      if (typeof Alpine !== 'undefined') {
+        Alpine.initTree(toast);
+      }
+      lucide.createIcons();
       setTimeout(function() {
-        alert.remove();
+        toast.remove();
       }, 5000);
     }
 

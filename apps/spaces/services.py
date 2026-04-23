@@ -8,6 +8,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.discussions.models import Discussion
+from apps.invitations.models import SpaceInvite
 from apps.spaces.models import Role, Space, SpaceParticipant
 from apps.users.models import User
 
@@ -222,6 +223,20 @@ def leave_space(*, space: Space, user: User) -> None:
     deleted_count, _ = SpaceParticipant.objects.filter(space=space, user=user).delete()
     if deleted_count:
         touch_space(space=space)
+
+
+def delete_space(*, space: Space) -> Space:
+    with transaction.atomic():
+        SpaceParticipant.objects.filter(space=space).delete()
+        SpaceInvite.objects.filter(space=space).delete()
+        if space.default_role_id is not None or space.root_discussion_id is not None:
+            space.default_role = None
+            space.root_discussion = None
+            space.save(update_fields=["default_role", "root_discussion"])
+        Discussion.objects.filter(space=space).delete()
+        Role.objects.filter(space=space).delete()
+        space.delete()
+    return space
 
 
 def update_participant_role(*, participant: SpaceParticipant, role: Role) -> SpaceParticipant:

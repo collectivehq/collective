@@ -16,8 +16,13 @@
       </div>
 
       {% if new_emailaddress %}
-        <div class="alert alert-info mb-4 text-left">
-          <span>{% blocktrans with email=new_emailaddress.email %}Pending change to {{ email }}. Check your inbox for a verification link.{% endblocktrans %}</span>
+        <div class="toast static mb-4 w-full max-w-none items-stretch p-0 text-left">
+          <div role="status" class="alert alert-info shadow-sm">
+            <div class="flex items-start gap-3">
+              <i data-lucide="info" class="mt-0.5 h-4 w-4 flex-shrink-0"></i>
+              <span>{% blocktrans with email=new_emailaddress.email %}Pending change to {{ email }}. Check your inbox for a verification link.{% endblocktrans %}</span>
+            </div>
+          </div>
         </div>
       {% endif %}
 

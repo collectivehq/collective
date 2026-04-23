@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Self, TypeVar
 
 from django.db import models
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.utils import timezone
 
 if TYPE_CHECKING:
@@ -26,3 +26,18 @@ class SpaceQuerySet(models.QuerySet[SpaceModelT]):
 
     def for_user(self, user: User) -> Self:
         return self.filter(participants__user=user, deleted_at__isnull=True).distinct()
+
+    def with_summary_counts(self) -> Self:
+        return self.defer("information").annotate(
+            num_discussions=Count(
+                "discussions",
+                filter=Q(discussions__deleted_at__isnull=True),
+                distinct=True,
+            ),
+            num_posts=Count(
+                "discussions__post",
+                filter=Q(discussions__deleted_at__isnull=True, discussions__post__deleted_at__isnull=True),
+                distinct=True,
+            ),
+            num_participants=Count("participants", distinct=True),
+        )

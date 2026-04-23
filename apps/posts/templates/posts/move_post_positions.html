@@ -1,11 +1,11 @@
 <p class="text-xs text-base-content/60 mb-2">
   Drag to reorder in "<span class="font-medium">{{ discussion.label|default:"Untitled" }}</span>":
 </p>
-<div id="move-sortable-{{ moved_post_id }}"
+<div id="move-sortable-{{ moved_item_token }}"
      class="flex flex-col gap-1 max-h-64 overflow-y-auto"
-     data-moved-post-id="{{ moved_post_id }}">
+     data-moved-item-token="{{ moved_item_token }}">
   {% for child in children %}
-  <div class="card card-compact border text-xs {% if child.pk|stringformat:'s' == moved_post_id %}bg-primary/5 border-primary/30{% else %}bg-base-100 border-base-300{% endif %}"
+  <div class="card card-compact border text-xs bg-base-100 border-base-300"
        data-id="{{ child.pk }}">
     <div class="card-body flex-row items-center gap-2 py-2 px-3">
       <span class="drag-handle cursor-grab"><i data-lucide="grip-vertical" class="w-3 h-3 text-base-content/30 flex-shrink-0"></i></span>
@@ -19,5 +19,27 @@
     </div>
   </div>
   {% endfor %}
+  {% for moved_item in moved_items %}
+  <div class="card card-compact border border-primary/30 bg-primary/5 text-xs" data-id="{{ moved_item.id }}" data-moved-item="true">
+    <div class="card-body flex-row items-center gap-2 py-2 px-3">
+      <span class="drag-handle cursor-grab"><i data-lucide="grip-vertical" class="w-3 h-3 text-base-content/30 flex-shrink-0"></i></span>
+      <i data-lucide="move" class="w-3 h-3 flex-shrink-0"></i>
+      <span class="truncate font-medium">{{ moved_item.label }}</span>
+    </div>
+  </div>
+  {% endfor %}
 </div>
-<input type="hidden" name="position" id="move-position-input-{{ moved_post_id }}" value="{{ children|length|add:'-1' }}">
+<input type="hidden" name="position" id="move-position-input-{{ moved_item_token }}" value="{{ children|length }}">
+<div id="move-item-order-inputs-{{ moved_item_token }}">
+  {% for moved_item in moved_items %}
+  <input type="hidden" name="item_ids" value="{{ moved_item.id }}" data-move-item-input>
+  {% endfor %}
+</div>
+<div id="move-target-order-inputs-{{ moved_item_token }}">
+  {% for child in children %}
+  <input type="hidden" name="ordered_target_ids" value="{{ child.pk }}" data-target-order-input>
+  {% endfor %}
+  {% for moved_item in moved_items %}
+  <input type="hidden" name="ordered_target_ids" value="{{ moved_item.id }}" data-target-order-input>
+  {% endfor %}
+</div>

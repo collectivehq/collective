@@ -15,10 +15,11 @@ urlpatterns = [
     path("<uuid:space_id>/posts/<uuid:post_id>/publish/", views.post_publish, name="post_publish"),
     path("<uuid:space_id>/links/<uuid:link_id>/delete/", views.link_delete, name="link_delete"),
     path("<uuid:space_id>/items/<uuid:item_id>/move/", views.discussion_item_move, name="discussion_item_move"),
+    path("<uuid:space_id>/items/move/", views.discussion_items_move, name="discussion_items_move"),
     path(
-        "<uuid:space_id>/items/<uuid:item_id>/move-positions/",
-        views.discussion_item_move_positions,
-        name="discussion_item_move_positions",
+        "<uuid:space_id>/items/move-positions/",
+        views.discussion_items_move_positions,
+        name="discussion_items_move_positions",
     ),
     path("<uuid:space_id>/upload/", views.image_upload, name="image_upload"),
 ]

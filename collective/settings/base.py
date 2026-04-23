@@ -7,9 +7,12 @@ from django.core.exceptions import ImproperlyConfigured
 from django.utils.csp import CSP
 from dotenv import load_dotenv
 
+from .storage import build_media_storage_config
+
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
+MEDIA_STORAGE = build_media_storage_config(os.environ, BASE_DIR)
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -20,6 +23,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "django.contrib.sites",
     "django.contrib.postgres",
+    "storages",
     "allauth",
     "allauth.account",
     "treebeard",
@@ -29,6 +33,7 @@ INSTALLED_APPS = [
     "apps.users",
     "apps.pages",
     "apps.spaces",
+    "apps.invitations",
     "apps.discussions",
     "apps.posts",
     "apps.opinions",
@@ -115,12 +120,11 @@ STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 
-MEDIA_URL = "media/"
-MEDIA_ROOT = BASE_DIR / "media"
+USE_OBJECT_STORAGE = MEDIA_STORAGE.use_object_storage
+MEDIA_URL = MEDIA_STORAGE.media_url
+MEDIA_ROOT = MEDIA_STORAGE.media_root
 STORAGES = {
-    "default": {
-        "BACKEND": "django.core.files.storage.FileSystemStorage",
-    },
+    "default": MEDIA_STORAGE.default_storage,
     "staticfiles": {
         "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
     },
@@ -173,9 +177,9 @@ SECURE_CSP = {
         "https://unpkg.com",
         "https://cdn.tiny.cloud",
     ],
-    "img-src": [CSP.SELF, "data:", "blob:"],
+    "img-src": [CSP.SELF, "data:", "blob:", *MEDIA_STORAGE.extra_csp_sources],
     "font-src": [CSP.SELF, "https://cdn.tiny.cloud", "https://cdn.jsdelivr.net"],
-    "connect-src": [CSP.SELF],
+    "connect-src": [CSP.SELF, *MEDIA_STORAGE.extra_csp_sources],
     "object-src": ["'none'"],
     "base-uri": [CSP.SELF],
 }

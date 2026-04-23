@@ -5,6 +5,7 @@ import uuid as uuid_mod
 from typing import IO, cast
 
 import filetype
+from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.core.files.base import ContentFile
@@ -12,6 +13,8 @@ from django.core.files.storage import default_storage
 from django.db import transaction
 from django.http import Http404, HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, render
+from django.utils.html import strip_tags
+from django.utils.text import Truncator
 from django.views.decorators.http import require_GET, require_POST
 
 from apps.discussions import services as discussion_services
@@ -53,11 +56,127 @@ def _read_limited(file: IO[bytes], max_bytes: int) -> bytes | None:
     return data
 
 
+def _public_media_url(path: str) -> str:
+    """Return the public media URL for a stored file path."""
+    return f"{settings.MEDIA_URL.rstrip('/')}/{path.lstrip('/')}"
+
+
 def _get_content_item(pk: str, space: Space) -> Post | Link | None:
     post = Post.objects.filter(pk=pk, discussion__space=space, deleted_at__isnull=True).first()
     if post is not None:
         return post
     return Link.objects.filter(pk=pk, discussion__space=space, deleted_at__isnull=True).first()
+
+
+def _get_content_items(item_ids: list[str], space: Space) -> list[Post | Link]:
+    items = [_get_content_item(item_id, space) for item_id in item_ids]
+    if any(item is None for item in items):
+        raise Http404
+    return [cast(Post | Link, item) for item in items]
+
+
+def _move_item_card_label(item: Post | Link) -> str:
+    if item.is_post:
+        return Truncator(strip_tags(cast(Post, item).content).strip() or "Post").chars(40)
+    return cast(Link, item).target.label or "Link"
+
+
+def _parse_target_order_ids(raw_ids: list[str]) -> list[uuid_mod.UUID] | None:
+    if not raw_ids:
+        return None
+
+    parsed_ids: list[uuid_mod.UUID] = []
+    for raw_id in raw_ids:
+        try:
+            parsed_ids.append(uuid_mod.UUID(raw_id))
+        except ValueError as error:
+            raise Http404 from error
+    return parsed_ids
+
+
+def _render_discussion_items_move_positions(
+    request: HttpRequest,
+    *,
+    space_id: str,
+    item_ids: list[str],
+) -> HttpResponse:
+    context = get_space_request_context(request, space_id)
+    space = context.space
+    user = context.user
+    participant = context.participant
+    if not can_reorganise(user, space, participant=participant):
+        raise PermissionDenied
+
+    if not item_ids:
+        return HttpResponse("No items selected", status=400)
+
+    items = _get_content_items(item_ids, space)
+    for item in items:
+        if item.is_post and not can_view_post(user, cast(Post, item), participant=participant):
+            raise PermissionDenied
+
+    discussion_id = request.GET.get("discussion_id")
+    discussion = get_object_or_404(
+        Discussion,
+        pk=discussion_id,
+        space=space,
+        deleted_at__isnull=True,
+    )
+    excluded_ids = {str(item.pk) for item in items}
+    children = [
+        child
+        for child in discussion_services.get_discussion_children(discussion)
+        if (child.is_post or child.is_link)
+        and str(child.pk) not in excluded_ids
+        and (not child.is_post or can_view_post(user, cast(Post, child), participant=participant))
+    ]
+    return render(
+        request,
+        "posts/move_post_positions.html",
+        {
+            "children": children,
+            "discussion": discussion,
+            "moved_item_token": str(items[0].pk) if len(items) == 1 else "batch",
+            "moved_items": [{"id": str(item.pk), "label": _move_item_card_label(item)} for item in items],
+        },
+    )
+
+
+def _perform_discussion_items_move(
+    request: HttpRequest,
+    *,
+    space_id: str,
+    space: Space,
+    items: list[Post | Link],
+) -> HttpResponse:
+    target_id = request.POST.get("target_discussion_id")
+    target = get_object_or_404(
+        Discussion,
+        pk=target_id,
+        space=space,
+        deleted_at__isnull=True,
+    )
+    try:
+        position = int(request.POST.get("position", -1))
+    except TypeError, ValueError:
+        position = -1
+    target_order_ids = _parse_target_order_ids(request.POST.getlist("ordered_target_ids"))
+
+    post_services.move_discussion_items(
+        items=items,
+        target_discussion=target,
+        position=position,
+        target_order_ids=target_order_ids,
+    )
+
+    response = discussion_detail(request, space_id, str(target.pk))
+    response["HX-Trigger"] = json.dumps(
+        {
+            "selectDiscussion": {"id": str(target.pk), "spaceId": str(space.pk)},
+            "refreshTree": {},
+        }
+    )
+    return response
 
 
 @require_POST
@@ -250,35 +369,12 @@ def discussion_item_move(request: HttpRequest, space_id: str, item_id: str) -> H
     if not can_reorganise(user, space, participant=participant):
         raise PermissionDenied
 
-    target_id = request.POST.get("target_discussion_id")
-    target = get_object_or_404(
-        Discussion,
-        pk=target_id,
-        space=space,
-        deleted_at__isnull=True,
-    )
-    try:
-        position = int(request.POST.get("position", -1))
-    except TypeError, ValueError:
-        position = -1
-
-    original_parent = item.get_parent()
-    post_services.move_discussion_item(item=item, target_discussion=target, position=position)
-
-    selected = target.pk if original_parent.pk != target.pk else original_parent.pk
-    response = discussion_detail(request, space_id, str(selected))
-    response["HX-Trigger"] = json.dumps(
-        {
-            "selectDiscussion": {"id": str(selected), "spaceId": str(space.pk)},
-            "refreshTree": {},
-        }
-    )
-    return response
+    return _perform_discussion_items_move(request, space_id=space_id, space=space, items=[item])
 
 
-@require_GET
+@require_POST
 @login_required
-def discussion_item_move_positions(request: HttpRequest, space_id: str, item_id: str) -> HttpResponse:
+def discussion_items_move(request: HttpRequest, space_id: str) -> HttpResponse:
     context = get_space_request_context(request, space_id)
     space = context.space
     user = context.user
@@ -286,33 +382,23 @@ def discussion_item_move_positions(request: HttpRequest, space_id: str, item_id:
     if not can_reorganise(user, space, participant=participant):
         raise PermissionDenied
 
-    item = _get_content_item(item_id, space)
-    if item is None:
-        raise Http404
+    item_ids = request.POST.getlist("item_ids")
+    if not item_ids:
+        return HttpResponse("No items selected", status=400)
 
-    if item.is_post and not can_view_post(user, cast(Post, item), participant=participant):
-        raise PermissionDenied
+    items = _get_content_items(item_ids, space)
+    for item in items:
+        if item.is_post and not can_view_post(user, cast(Post, item), participant=participant):
+            raise PermissionDenied
 
-    discussion_id = request.GET.get("discussion_id")
-    discussion = get_object_or_404(
-        Discussion,
-        pk=discussion_id,
-        space=space,
-        deleted_at__isnull=True,
-    )
-    children = [
-        child
-        for child in discussion_services.get_discussion_children(discussion)
-        if (child.is_post or child.is_link)
-        and str(child.pk) != str(item_id)
-        and (not child.is_post or can_view_post(user, cast(Post, child), participant=participant))
-    ]
-    children.append(item)
-    return render(
-        request,
-        "posts/move_post_positions.html",
-        {"children": children, "discussion": discussion, "moved_post_id": str(item.pk)},
-    )
+    return _perform_discussion_items_move(request, space_id=space_id, space=space, items=items)
+
+
+@require_GET
+@login_required
+def discussion_items_move_positions(request: HttpRequest, space_id: str) -> HttpResponse:
+    item_ids = request.GET.getlist("item_ids")
+    return _render_discussion_items_move_positions(request, space_id=space_id, item_ids=item_ids)
 
 
 @require_POST
@@ -384,7 +470,7 @@ def image_upload(request: HttpRequest, space_id: str) -> HttpResponse:
     ext = EXT_FOR_TYPE[detected.mime]
     filename = f"uploads/{space_id}/{uuid_mod.uuid4().hex}.{ext}"
     saved_path = default_storage.save(filename, ContentFile(data))
-    url = default_storage.url(saved_path)
+    url = _public_media_url(saved_path)
     return JsonResponse({"location": url})
 
 
@@ -398,5 +484,6 @@ __all__ = [
     "post_publish",
     "post_revisions",
     "discussion_item_move",
-    "discussion_item_move_positions",
+    "discussion_items_move",
+    "discussion_items_move_positions",
 ]
