@@ -9,10 +9,8 @@ from django.core.exceptions import ImproperlyConfigured
 
 
 def _load_production_settings(monkeypatch: pytest.MonkeyPatch, **env: str) -> ModuleType:
-    monkeypatch.setenv("DJANGO_SECRET_KEY", "test-secret")
-    monkeypatch.setenv("DJANGO_ALLOWED_HOSTS", "example.com")
-
     managed_env_vars = (
+        "DJANGO_ALLOWED_HOSTS",
         "EMAIL_HOST",
         "EMAIL_PORT",
         "EMAIL_HOST_USER",
@@ -22,16 +20,24 @@ def _load_production_settings(monkeypatch: pytest.MonkeyPatch, **env: str) -> Mo
         "EMAIL_TIMEOUT",
         "DEFAULT_FROM_EMAIL",
         "SERVER_EMAIL",
+        "ACCOUNT_EMAIL_VERIFICATION",
+        "DJANGO_SITE_NAME",
+        "DJANGO_SITE_DOMAIN",
         "USE_X_FORWARDED_HOST",
         "USE_X_FORWARDED_PROTO",
     )
     for key in managed_env_vars:
         monkeypatch.delenv(key, raising=False)
 
+    monkeypatch.setenv("DJANGO_SECRET_KEY", "test-secret")
+    monkeypatch.setenv("DJANGO_ALLOWED_HOSTS", "example.com")
+
     for key, value in env.items():
         monkeypatch.setenv(key, value)
 
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "collective.settings.test")
+    base_module = importlib.import_module("collective.settings.base")
+    importlib.reload(base_module)
     module = importlib.import_module("collective.settings.production")
     return importlib.reload(module)
 
@@ -75,6 +81,40 @@ class TestProductionEmailSettings:
                 monkeypatch,
                 EMAIL_USE_TLS="true",
                 EMAIL_USE_SSL="true",
+            )
+
+    def test_uses_first_allowed_host_as_default_site_domain(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        settings_module = _load_production_settings(
+            monkeypatch,
+            DJANGO_ALLOWED_HOSTS="collective.example.com,www.collective.example.com",
+        )
+
+        assert settings_module.SITE_NAME == "Collective"
+        assert settings_module.SITE_DOMAIN == "collective.example.com"
+
+    def test_reads_explicit_site_metadata_from_environment(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        settings_module = _load_production_settings(
+            monkeypatch,
+            DJANGO_SITE_NAME="Collective Platform",
+            DJANGO_SITE_DOMAIN="collective.edfab.org",
+        )
+
+        assert settings_module.SITE_NAME == "Collective Platform"
+        assert settings_module.SITE_DOMAIN == "collective.edfab.org"
+
+    def test_reads_email_verification_mode_from_environment(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        settings_module = _load_production_settings(
+            monkeypatch,
+            ACCOUNT_EMAIL_VERIFICATION="mandatory",
+        )
+
+        assert settings_module.ACCOUNT_EMAIL_VERIFICATION == "mandatory"
+
+    def test_rejects_invalid_email_verification_mode(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        with pytest.raises(ImproperlyConfigured, match="ACCOUNT_EMAIL_VERIFICATION must be one of"):
+            _load_production_settings(
+                monkeypatch,
+                ACCOUNT_EMAIL_VERIFICATION="sometimes",
             )
 
 

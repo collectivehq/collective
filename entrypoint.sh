@@ -9,6 +9,9 @@ TIMEOUT="${GUNICORN_TIMEOUT:-60}"
 echo "[entrypoint] Applying database migrations..."
 python manage.py migrate --noinput
 
+echo "[entrypoint] Syncing Django site metadata..."
+python manage.py sync_site --verbosity 0
+
 echo "[entrypoint] Ensuring database cache tables exist..."
 python manage.py createcachetable --verbosity 0
 

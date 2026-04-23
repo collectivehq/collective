@@ -96,10 +96,16 @@ AUTHENTICATION_BACKENDS = [
 ]
 
 SITE_ID = 1
+SITE_NAME = os.environ.get("DJANGO_SITE_NAME", "Collective")
+SITE_DOMAIN = os.environ.get("DJANGO_SITE_DOMAIN", "localhost")
 
 ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*", "password2*"]
 ACCOUNT_LOGIN_METHODS = {"email"}
-ACCOUNT_EMAIL_VERIFICATION = "optional"
+ACCOUNT_EMAIL_VERIFICATION = os.environ.get("ACCOUNT_EMAIL_VERIFICATION", "optional").strip().lower()
+if ACCOUNT_EMAIL_VERIFICATION not in {"mandatory", "optional", "none"}:
+    raise ImproperlyConfigured(
+        "ACCOUNT_EMAIL_VERIFICATION must be one of: mandatory, optional, none."
+    )
 ACCOUNT_CHANGE_EMAIL = True
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/"

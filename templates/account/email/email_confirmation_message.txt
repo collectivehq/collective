@@ -1,0 +1,12 @@
+{% extends "account/email/base_message.txt" %}
+{% load account %}
+{% load i18n %}
+
+{% block content %}{% autoescape off %}{% user_display user as user_display %}{% blocktranslate with site_name=current_site.name %}You are receiving this email because {{ user_display }} registered for an account on {{ site_name }} using this email address.{% endblocktranslate %}
+
+{% if code %}{% blocktranslate %}Enter the verification code below in your browser to confirm your email address:{% endblocktranslate %}
+
+{{ code }}{% else %}{% blocktranslate %}Please confirm your email address by opening the link below:{% endblocktranslate %}
+
+{{ activate_url }}{% endif %}
+{% endautoescape %}{% endblock content %}

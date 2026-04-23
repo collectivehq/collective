@@ -41,6 +41,7 @@ export POSTGRES_PORT=5432
 ```
 
 You can also place them in a `.env` file in the repository root.
+Set `ACCOUNT_EMAIL_VERIFICATION=mandatory` if new accounts must confirm their email before they can use the site.
 
 ### Install dependencies
 
@@ -123,6 +124,7 @@ If you rebuild `static/app.css`, run `python manage.py collectstatic --noinput` 
 The repository includes a Dockerfile and entrypoint script for running the Django app in a container. The image expects PostgreSQL connection settings and serves the application with Gunicorn.
 
 When running behind a TLS-terminating proxy or load balancer, production trusts `X-Forwarded-Proto` and `X-Forwarded-Host` by default so Django can detect the original HTTPS request correctly. Set `USE_X_FORWARDED_PROTO=false` or `USE_X_FORWARDED_HOST=false` if your deployment does not provide those headers safely.
+Production also syncs the Django `Site` record on startup so account emails use the configured brand and domain. Override that metadata with `DJANGO_SITE_NAME` and `DJANGO_SITE_DOMAIN` if needed.
 
 ### SMTP
 
